@@ -9,7 +9,7 @@
           messages (range 10000)
           topic-fn :topic
           results (atom #{})
-          topic-processor (fn [topic message]
+          topic-processor (fn dummy [topic message]
                             (println "Processing Message:" message)
                             (case topic
                               (:t1 :t2 :t3 :t4 :t5)
