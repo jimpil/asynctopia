@@ -3,15 +3,20 @@
             [clojure.java.io :as io]
             [asynctopia
              [ops :as ops]
-             [util :as ut]]))
+             [util :as ut]]
+            [asynctopia.protocols :as proto]
+            [clojure.core.async.impl.buffers :as buffers])
+  (:import (asynctopia.protocols IBufferCapability)
+           (clojure.core.async.impl.channels ManyToManyChannel)
+           (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)))
 
 (defn line-chan
-  "Returns a channel that will receive all the
-   lines in <src> transformed per <xform>."
+  "Returns a channel that will receive all the lines
+   in <src> (via `line-seq`) transformed per <xform>."
   ([src]
    (line-chan src 1024))
   ([src buf-or-n]
-   (line-chan src buf-or-n (keep identity)))
+   (line-chan src buf-or-n (map identity)))
   ([src buf-or-n xform]
    (line-chan src buf-or-n xform ut/println-error-handler))
   ([src buf-or-n xform ex-handler]
@@ -23,16 +28,25 @@
        (ca/close! out-chan))
      out-chan)))
 
-(defn count-chan
+(defn counting-chan
   "Returns a channel that will receive the
    total number of elements taken from <ch>."
-  ([ch]
-   (count-chan ch (fn [so-far _current] (inc so-far))))
-  ([ch f]
-   (ca/go-loop [n 0]
-     (if-some [x (ca/<! ch)]
-       (recur (f n x))
-       n))))
+  [ch]
+  (ca/go-loop [n 0]
+    (if-some [_ (ca/<! ch)]
+      (recur (inc n))
+      n)))
+
+(comment
+  ;; process the non-empty lines from <src> with <f> (one-by-one)
+  ;; and report number of errors VS successes
+  (->> (line-chan src 1024 (comp (remove empty?) (keep f)) identity)
+       (ca/split ut/throwable?)
+       (map counting-chan)
+       (map ca/<!!) ;; => (0 120000)
+       )
+
+  )
 
 (defn- round [n]
   (Math/round (double n)))
@@ -42,14 +56,13 @@
         token-value (long (round (* sleep-time rate-ms)))   ; how many messages to pipe per token
         bucket (ca/chan (ca/dropping-buffer bucket-size))] ; we model the bucket with a buffered channel
 
-    ;; The bucket filler thread. Puts a token in the bucket every
-    ;; sleep-time seconds. If the bucket is full the token is dropped
-    ;; since the bucket channel uses a dropping buffer.
+    ;; The bucket filler loop. Puts a token in the bucket every
+    ;; sleep-time seconds. If the bucket is full the token is dropped.
     (ca/go
       (while (ca/>! bucket ::token)
         (ca/<! (ca/timeout (long sleep-time)))))
 
-    ;; The piping thread. Takes a token from the bucket (blocking until
+    ;; The piping loop. Takes a token from the bucket (parking until
     ;; one is ready if the bucket is empty), and forwards token-value
     ;; messages from the source channel to the output channel.
 
@@ -61,7 +74,7 @@
     (fn [c]
       (let [tc (ca/chan)] ; the throttled chan
         (ca/go
-          (while (ca/<! bucket) ; block for a token
+          (while (ca/<! bucket) ; park for a token
             (dotimes [_ (long token-value)]
               (when-not (ops/pipe1 c tc)
                 (ca/close! bucket)))))
@@ -114,3 +127,35 @@
    (throttled-chan c rate unit 1))
   ([c rate unit bucket-size]
    ((chan-throttler rate unit bucket-size) c)))
+
+(defn- channel-buffer
+  "Returns the underlying buffer of channel <ch>."
+  [^ManyToManyChannel ch]
+  (.buf ch))
+
+(extend-protocol proto/IBufferCapability
+  FixedBuffer
+  (clone-empty [b] (ca/buffer (.n b)))
+  (snapshot [b]    (seq (.buf b)))
+  DroppingBuffer
+  (clone-empty [b] (ca/dropping-buffer (.n b)))
+  (snapshot [b]    (seq (.buf b)))
+  SlidingBuffer
+  (clone-empty [b] (ca/sliding-buffer (.n b)))
+  (snapshot [b]    (seq (.buf b)))
+  PromiseBuffer
+  (clone-empty [_] (buffers/promise-buffer))
+  (snapshot [b]    (list (.val b)))
+  )
+
+(defn empty-buffer
+  "Returns a new/empty buffer of the same type and (buffering) capacity
+   as the provided channel's buffer."
+  [^ManyToManyChannel ch]
+  (proto/clone-empty (channel-buffer ch)))
+
+(defn snapshot-buffer
+  "Returns the (current) contents of this channel's buffer.
+   Elements will appear in reverse order."
+  [^ManyToManyChannel ch]
+  (proto/snapshot (channel-buffer ch)))

@@ -67,3 +67,12 @@
           ret (pkeep inc data :in-flight 4)
           expected (doall (keep inc data))]
       (is (= @ret expected)))))
+
+(deftest with-timeout-tests
+  (testing "with-timeout"
+    (is (= :done @(with-timeout 600 :timeout (Thread/sleep 500) :done)))
+    (is (= :timeout @(with-timeout 400 :timeout (Thread/sleep 500) :done)))
+    (is (nil? @(with-timeout 600 :timeout (Thread/sleep 500))))
+    )
+
+  )

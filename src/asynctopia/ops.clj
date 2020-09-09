@@ -1,6 +1,5 @@
 (ns asynctopia.ops
-  (:require [clojure.core.async :as ca])
-  (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer)))
+  (:require [clojure.core.async :as ca]))
 
 (defn pipe-with
   "Pipes the <from> channel into a newly created output-channel
@@ -22,11 +21,44 @@
 
 (defmacro go-consume!
   ""
-  [f c]
+  [c f]
   `(ca/go-loop []
      (when-some [x# (ca/<! ~c)]
        (~f x#)
        (recur))))
+
+(defmacro nil-converting
+  "If <x> is nil returns ::nil.
+   Useful when putting (unknown) stuff into channels."
+  [x]
+  `(if-some [x# ~x] x# ::nil))
+
+(defmacro nil-restoring
+  "If <x> is ::nil returns nil.
+   Useful when taking (nil-safe) stuff from channels."
+  [x]
+  `(let [x# ~x]
+     (when (not= ::nil x#) x#)))
+
+(defmacro <!?
+  "Nil-preserving variant of `<!`.
+   If <x> is ::nil, will return nil.
+   Must be called withing a `go` block."
+  [c]
+  `(nil-restoring (ca/<! ~c)))
+
+(defmacro <!?deliver
+  "Takes from channel <c> and delivers the value to promise <p>.
+   If the value is ::nil delivers nil."
+  [c p]
+  `(deliver ~p (<!? ~c)))
+
+(defmacro >!?
+  "Nil-safe variant of `>!`.
+   If <x> is nil, will put ::nil.
+   Must be called withing a `go` block."
+  [c x]
+  `(ca/>! ~c (nil-converting ~x)))
 
 (defn merge-reduce
   "If no <chans> are provided, essentially a wrapper to `ca/reduce`,
@@ -36,23 +68,3 @@
          (ca/merge (cons chan chans))
          chan)
        (ca/reduce f init)))
-
-(defn clone-buffer
-  "If <buffer> is a integer, simply returns it.
-   Otherwise, if it's an instance of `FixedBuffer`,
-   `DroppingBuffer`, or `SlidingBuffer`, returns a new
-   instance of the same type and the same  `n`."
-  [buffer]
-  (let [bc (class buffer)]
-    (case bc
-      (Integer, Long) (if (pos? buffer)
-                        buffer
-                        (throw
-                          (IllegalArgumentException.
-                            "A buffer must have capacity!")))
-      FixedBuffer    (ca/buffer          (:n buffer))
-      DroppingBuffer (ca/dropping-buffer (:n buffer))
-      SlidingBuffer  (ca/sliding-buffer  (:n buffer))
-      (throw
-        (IllegalArgumentException.
-          (str "Unsupported buffer class: " bc))))))

@@ -24,8 +24,8 @@
                         :to-error to-error
                         :buffer buffer)
              (ca/split error?))]
-    (ops/go-consume! identity values-chan)   ;; main consuming loop
-    (ops/go-consume! error! errors-chan))) ;; error handling loop
+    (ops/go-consume! values-chan identity) ;; main consuming loop
+    (ops/go-consume! errors-chan error!))) ;; error handling loop
 
 
 (defn pkeep
@@ -51,11 +51,8 @@
     (let [ret-chan (ca/into [] out-chan)]
       (if (nil? ret)
         (ca/<!! ret-chan)
-        (do
-          (ca/go
-            (->> (ca/<! ret-chan)
-                 (deliver ret)))
-          ret)))))
+        (do (ca/go (ops/<!?deliver ret-chan ret))
+            ret)))))
 
 (defmacro with-timeout
   "Returns a promise which will (eventually) receive
@@ -63,23 +60,13 @@
   [ms timeout-val & body]
   `(let [ret-chan# (ca/promise-chan)
          ret# (promise)]
-     (ca/go
-       (if-some [x# (do ~@body)]
-         (ca/>! ret-chan# x#)
-         (ca/>! ret-chan# ::nil)))
+     (ca/go (ops/>!? ret-chan# (do ~@body)))
      (ca/go
        (let [[x#] (ca/alts! [(ca/timeout ~ms) ret-chan#])]
-         (deliver ret# (if (nil? x#) ~timeout-val x#))))
+         (->> (if (nil? x#) ~timeout-val (ops/nil-restoring x#))
+              (deliver ret#))))
      ret#))
 
-(comment
-  (let [error-no (AtomicLong. 0)
-        data-in (ca/to-chan!
-                  (interleave (range 1000)
-                              (repeatedly #(ex-info (str "ex-info:" (.getAndIncrement error-no)) {}))))]
-    (->> (pipe-with identity data-in)
-         (consuming-with #(println "Consumed:" %))))
-  )
 
 (defn thread-and ;; adapted from https://stackoverflow.com/questions/17621344/with-clojure-threading-long-running-processes-and-comparing-their-returns
   "Calls each of the no-arg <fns> on a separate thread (via `future`).
@@ -116,26 +103,3 @@
           (if (next new-futs-and-cs)
             (recur new-futs-and-cs)
             (ca/<!! (second (first new-futs-and-cs)))))))))
-
-
-
-
-(comment
-
-  (defn count-words-async
-    ([file-path]
-     (count-words-async file-path 1))
-    ([file-path n-consumers]
-     (let [lc (line-chan file-path 1024 (map #(str/split % #"//s")))
-           ret-promise (promise)
-           line->wc (fn [so-far current]
-                      (+ so-far (count current)))
-           ret-chan (->> (for [_ (range n-consumers)]
-                           (count-chan lc line->wc))
-                         (apply ops/merge-reduce + 0))]
-       (ca/go
-         (when-some [ret (ca/<! ret-chan)]
-           (deliver ret-promise ret)))
-
-       ret-promise)))
-  )
