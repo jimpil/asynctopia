@@ -6,9 +6,7 @@
              [util :as ut]]
             [asynctopia.protocols :as proto]
             [clojure.core.async.impl.buffers :as buffers])
-  (:import (asynctopia.protocols IBufferCapability)
-           (clojure.core.async.impl.channels ManyToManyChannel)
-           (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)))
+  (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)))
 
 (defn line-chan
   "Returns a channel that will receive all the lines
@@ -128,34 +126,22 @@
   ([c rate unit bucket-size]
    ((chan-throttler rate unit bucket-size) c)))
 
-(defn- channel-buffer
-  "Returns the underlying buffer of channel <ch>."
-  [^ManyToManyChannel ch]
-  (.buf ch))
 
-(extend-protocol proto/IBufferCapability
+(extend-protocol proto/IEmptyBuffer
   FixedBuffer
-  (clone-empty [b] (ca/buffer (.n b)))
-  (snapshot [b]    (seq (.buf b)))
+  (clone-empty [b]  (ca/buffer (.n b)))
   DroppingBuffer
   (clone-empty [b] (ca/dropping-buffer (.n b)))
-  (snapshot [b]    (seq (.buf b)))
   SlidingBuffer
   (clone-empty [b] (ca/sliding-buffer (.n b)))
-  (snapshot [b]    (seq (.buf b)))
   PromiseBuffer
   (clone-empty [_] (buffers/promise-buffer))
-  (snapshot [b]    (list (.val b)))
   )
 
 (defn empty-buffer
   "Returns a new/empty buffer of the same type and (buffering) capacity
    as the provided channel's buffer."
-  [^ManyToManyChannel ch]
-  (proto/clone-empty (channel-buffer ch)))
+  [ch]
+  (proto/clone-empty (ut/channel-buffer ch)))
 
-(defn snapshot-buffer
-  "Returns the (current) contents of this channel's buffer.
-   Elements will appear in reverse order."
-  [^ManyToManyChannel ch]
-  (proto/snapshot (channel-buffer ch)))
+
