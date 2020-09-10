@@ -1,5 +1,6 @@
 (ns asynctopia.ops
-  (:require [clojure.core.async :as ca]))
+  (:require [clojure.core.async :as ca]
+            [asynctopia.buffers.array :as ab]))
 
 (defn pipe-with
   "Pipes the <from> channel into a newly created output-channel
@@ -8,7 +9,7 @@
              :or {to-error identity
                   buffer 1024}}]
   ;; returns the `to` channel (2nd arg)
-  (ca/pipe from (ca/chan buffer (keep f) to-error)))
+  (ca/pipe from (ab/array-buffer-chan buffer (keep f) to-error)))
 
 (defmacro pipe1
   "Pipes an element from the <from> channel and supplies it to the <to>

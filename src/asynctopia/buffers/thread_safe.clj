@@ -1,19 +1,19 @@
-(ns asynctopia.concurrent-buffers
+(ns asynctopia.buffers.thread-safe
   (:require [clojure.core.async.impl.protocols :as impl]
             [asynctopia.protocols :as proto]
             [asynctopia.util :as ut])
   (:import (java.util.concurrent ConcurrentLinkedDeque)
            (clojure.lang Counted)))
 
-;; Drop-in buffer replacements that have one major difference with the core ones:
-;; The underlying buffer is a ConcurrentLinkedDeque (as opposed to a LinkedList).
-;; This enabled the buffer to be traversed (while live) w/o throwing a ConcurrentModificationException,
+;; Drop-in buffer replacements backed by a ConcurrentLinkedDeque
+;; (as opposed to a LinkedList). This enabled the buffer to be
+;; traversed (while live) w/o throwing a ConcurrentModificationException,
 ;; thus making it snapshot-able (see `snapshot-buffer`).
 
 (deftype FixedBuffer [^ConcurrentLinkedDeque buf cnt ^long n]
   impl/Buffer
   (full? [this]
-    (>= (count this) n)) ;; won't be fully accurate
+    (>= (count this) n))
   (remove! [this]
     (let [x (.removeLast buf)]
       (vswap! cnt unchecked-dec)
@@ -96,6 +96,6 @@
     n))
 
 (defn snapshot-buffer
-  "Returns the (current) contents of this channel's (concurrent) buffer."
+  "Returns the (current) contents of this channel's (thread-safe) buffer."
   [concurrent-buffer-ch]
   (proto/snapshot (ut/channel-buffer concurrent-buffer-ch)))

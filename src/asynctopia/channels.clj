@@ -4,6 +4,7 @@
             [asynctopia
              [ops :as ops]
              [util :as ut]]
+            [asynctopia.buffers.array :as ab]
             [asynctopia.protocols :as proto]
             [clojure.core.async.impl.buffers :as buffers])
   (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)))
@@ -18,7 +19,7 @@
   ([src buf-or-n xform]
    (line-chan src buf-or-n xform ut/println-error-handler))
   ([src buf-or-n xform ex-handler]
-   (let [out-chan (ca/chan buf-or-n xform ex-handler)]
+   (let [out-chan (ab/array-buffer-chan buf-or-n xform ex-handler)]
      (ca/go
        (with-open [rdr (io/reader src)]
          (doseq [line (line-seq rdr)]
@@ -52,7 +53,7 @@
 (defn- chan-throttler* [rate-ms bucket-size]
   (let [sleep-time (round (max (/ rate-ms) 10))
         token-value (long (round (* sleep-time rate-ms)))   ; how many messages to pipe per token
-        bucket (ca/chan (ca/dropping-buffer bucket-size))] ; we model the bucket with a buffered channel
+        bucket (ab/array-buffer-chan [:dropping bucket-size])] ; we model the bucket with a buffered channel
 
     ;; The bucket filler loop. Puts a token in the bucket every
     ;; sleep-time seconds. If the bucket is full the token is dropped.
