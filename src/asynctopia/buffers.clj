@@ -1,8 +1,8 @@
 (ns asynctopia.buffers
   (:require [clojure.core.async.impl.protocols :as impl]
+            [clojure.core.async.impl.dispatch :as dispatch]
             [asynctopia.protocols :as proto]
-            [asynctopia.util :as ut]
-            [clojure.core.async.impl.dispatch :as dispatch])
+            [asynctopia.util :as ut])
   (:import (java.util ArrayDeque Deque)
            (clojure.lang Counted IFn)
            (java.util.concurrent ConcurrentLinkedDeque)))
