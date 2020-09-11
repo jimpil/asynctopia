@@ -65,7 +65,7 @@
       (println topic \: foo)
       (throw (ex-info "problem" {}))))
 
-  (def in-chan (ca/chan))
+  (def in-chan (channels/chan))
   (pub-sub! in-chan :topic [[:t1 :t2] dummy-processor])
   (ca/>!! in-chan (gen-val! (rand-nth [:t1 :t2]))) ;; => true
   (ca/close! in-chan)

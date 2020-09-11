@@ -240,10 +240,10 @@
     ;; assuming some instance from this namespace
     :else buf-or-n))
 
-(defn buffer
-  "Flexible/convenient ctor function for buffers."
+(defn buf
+  "Flexible/convenient ctor function for buffers (similar to `chan`)."
   ([buf-or-n]
-   (buffer buf-or-n false))
+   (buf buf-or-n false))
   ([buf-or-n thread-safe?]
    (if thread-safe?
      (buffer* buf-or-n ts-fixed-buffer ts-dropping-buffer ts-sliding-buffer)

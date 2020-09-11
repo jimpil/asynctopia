@@ -24,7 +24,7 @@
    (chan buf-or-n xform ex-handler nil))
   ([buf-or-n xform ex-handler thread-safe-buffer?]
    (-> buf-or-n
-       (buffers/buffer thread-safe-buffer?)
+       (buffers/buf thread-safe-buffer?)
        (ca/chan xform ex-handler))))
 
 (defn line-chan
@@ -59,8 +59,7 @@
   ;; and report number of errors VS successes
   (->> (line-chan src 1024 (comp (remove empty?) (keep f)) identity)
        (ca/split ut/throwable?)
-       (map counting-chan)
-       (map ca/<!!) ;; => (0 120000)
+       (map (comp ca/<!! counting-chan)) ;; => (0 120000)
        )
 
   )
