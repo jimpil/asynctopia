@@ -1,7 +1,8 @@
 (ns asynctopia.buffers
   (:require [clojure.core.async.impl.protocols :as impl]
             [asynctopia.protocols :as proto]
-            [asynctopia.util :as ut])
+            [asynctopia.util :as ut]
+            [clojure.core.async.impl.dispatch :as dispatch])
   (:import (java.util ArrayDeque Deque)
            (clojure.lang Counted IFn)
            (java.util.concurrent ConcurrentLinkedDeque)))
@@ -53,7 +54,7 @@
     (.removeLast buf))
   (add!* [this itm]
     (if (>= (count this) n)
-      (dropped! itm)
+      (some-> dropped! (partial itm) dispatch/run)
       (.addFirst buf itm))
     this)
   (close-buf! [this])
@@ -78,7 +79,7 @@
    (dropping-buffer nil n dropped!))
   ([^Deque dq ^long n dropped!]
    (-> (or dq (ArrayDeque. n))
-       (DroppingBuffer. n (or dropped! identity)))))
+       (DroppingBuffer. n dropped!))))
 
 (deftype SlidingBuffer [^Deque buf ^long n ^IFn slided!]
   impl/UnblockingBuffer
@@ -88,7 +89,8 @@
     (.removeLast buf))
   (add!* [this itm]
     (when (= (count this) n)
-      (slided! (impl/remove! this)))
+      (let [slided (impl/remove! this)]
+        (some-> slided! (partial slided) dispatch/run)))
     (.addFirst buf itm)
     this)
   (close-buf! [this])
@@ -113,7 +115,7 @@
    (sliding-buffer nil n slided!))
   ([^Deque dq ^long n slided!]
    (-> (or dq (ArrayDeque. n))
-       (SlidingBuffer. n (or slided! identity)))))
+       (SlidingBuffer. n slided!))))
 ;;==============================================================================
 ;;------------------------------------------------------------------------------
 ;;==============================================================================
@@ -155,7 +157,7 @@
      (volatile! 0)
      n)))
 
-(deftype ThreadSafeDroppingBuffer [^ConcurrentLinkedDeque buf cnt ^long n dropped!]
+(deftype ThreadSafeDroppingBuffer [^ConcurrentLinkedDeque buf cnt ^long n ^IFn dropped!]
   impl/UnblockingBuffer
   impl/Buffer
   (full? [this] false)
@@ -165,7 +167,7 @@
       x))
   (add!* [this itm]
     (if (>= (count this) n)
-      (dropped! itm)
+      (some-> dropped! (partial itm) dispatch/run)
       (do (.addFirst buf itm)
           (vswap! cnt unchecked-inc)))
     this)
@@ -192,9 +194,9 @@
      (ConcurrentLinkedDeque.)
      (volatile! 0)
      n
-     (or dropped! identity))))
+     dropped!)))
 
-(deftype ThreadSafeSlidingBuffer [^ConcurrentLinkedDeque buf cnt ^long n slided!]
+(deftype ThreadSafeSlidingBuffer [^ConcurrentLinkedDeque buf cnt ^long n ^IFn slided!]
   impl/UnblockingBuffer
   impl/Buffer
   (full? [this] false)
@@ -204,7 +206,8 @@
       x))
   (add!* [this itm]
     (when (= (count this) n)
-      (slided! (impl/remove! this)))
+      (let [slided (impl/remove! this)]
+        (some-> slided! (partial slided) dispatch/run)))
     (.addFirst buf itm)
     (vswap! cnt unchecked-inc)
     this)
@@ -231,7 +234,7 @@
      (ConcurrentLinkedDeque.)
      (volatile! 0)
      n
-     (or slided! identity))))
+     slided!)))
 
 (defn snapshot-buffer
   "Returns the (current) contents of this channel's (thread-safe) buffer."
