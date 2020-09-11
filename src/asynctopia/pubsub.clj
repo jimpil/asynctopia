@@ -2,6 +2,7 @@
   (:require [clojure.core.async :as ca]
             [asynctopia
              [core :as c]
+             [channels :as channels]
              [util :as ut]]))
 
 (defn pub-sub!
@@ -34,7 +35,7 @@
         topic->buffer (or topic->buffer
                           (zipmap (keys topic->processor)
                                   (repeat 1024))) ;; default buffer
-        sub-chans (repeatedly (count topic->processor) ca/chan)
+        sub-chans (repeatedly (count topic->processor) channels/chan)
         pb (ca/pub in topic-fn topic->buffer)] ;; create the publication
 
     (dorun

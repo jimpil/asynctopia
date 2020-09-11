@@ -1,8 +1,8 @@
 (ns asynctopia.core
   (:require [clojure.core.async :as ca]
-            [clojure.string :as str]
             [asynctopia
              [ops :as ops]
+             [channels :as channels]
              [util :as ut]]))
 
 (defn consuming-with
@@ -40,7 +40,7 @@
                   async? true
                   error! ut/println-error-handler}}]
   (let [in-chan  (ca/to-chan! coll)
-        out-chan (ca/chan)
+        out-chan (channels/chan)
         ret (when async? (promise))]
     (ca/pipeline-blocking in-flight
                           out-chan
@@ -103,3 +103,4 @@
           (if (next new-futs-and-cs)
             (recur new-futs-and-cs)
             (ca/<!! (second (first new-futs-and-cs)))))))))
+

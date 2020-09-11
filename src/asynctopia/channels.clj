@@ -2,12 +2,30 @@
   (:require [clojure.core.async :as ca]
             [clojure.java.io :as io]
             [asynctopia
-             [ops :as ops]
+             [buffers :as buffers]
              [util :as ut]]
-            [asynctopia.buffers.array :as ab]
             [asynctopia.protocols :as proto]
-            [clojure.core.async.impl.buffers :as buffers])
+            [clojure.core.async.impl.buffers :as ca-buffers])
   (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)))
+(defn chan
+  "Drop-in replacement for `clojure.async.core/chan`, supporting
+   any `Deque` buffer (not just `LinkedList`). This can be achieved
+   either by pre-building the buffer via the `asynctopia.buffers` ns,
+   or by providing <buf-or-n> as a vector of three elements (`[variant n dq]`
+   where <variant> is one of :fixed/:dropping/:sliding),
+   and <dq> an instance of `java.util.Deque` (defaults to `ArrayDeque`)."
+  ([]
+   (chan nil))
+  ([buf-or-n]
+   (chan buf-or-n nil))
+  ([buf-or-n xform]
+   (chan buf-or-n xform nil))
+  ([buf-or-n xform ex-handler]
+   (chan buf-or-n xform ex-handler nil))
+  ([buf-or-n xform ex-handler thread-safe-buffer?]
+   (-> buf-or-n
+       (buffers/buffer thread-safe-buffer?)
+       (ca/chan xform ex-handler))))
 
 (defn line-chan
   "Returns a channel that will receive all the lines
@@ -19,7 +37,7 @@
   ([src buf-or-n xform]
    (line-chan src buf-or-n xform ut/println-error-handler))
   ([src buf-or-n xform ex-handler]
-   (let [out-chan (ab/array-buffer-chan buf-or-n xform ex-handler)]
+   (let [out-chan (chan buf-or-n xform ex-handler)]
      (ca/go
        (with-open [rdr (io/reader src)]
          (doseq [line (line-seq rdr)]
@@ -50,10 +68,19 @@
 (defn- round [n]
   (Math/round (double n)))
 
+(defmacro pipe1
+  "Pipes an element from the <from> channel and supplies it to the <to>
+   channel. The to channel will be closed when the from channel closes.
+   Must be called within a go block."
+  [from to]
+  `(if-some [v# (ca/<! ~from)]
+     (ca/>! ~to v#)
+     (ca/close! ~to)))
+
 (defn- chan-throttler* [rate-ms bucket-size]
   (let [sleep-time (round (max (/ rate-ms) 10))
         token-value (long (round (* sleep-time rate-ms)))   ; how many messages to pipe per token
-        bucket (ab/array-buffer-chan [:dropping bucket-size])] ; we model the bucket with a buffered channel
+        bucket (chan [:dropping bucket-size])] ; we model the bucket with a buffered channel
 
     ;; The bucket filler loop. Puts a token in the bucket every
     ;; sleep-time seconds. If the bucket is full the token is dropped.
@@ -71,11 +98,11 @@
     ;; is 1 and we adjust sleep-time to obtain the desired rate.
 
     (fn [c]
-      (let [tc (ca/chan)] ; the throttled chan
+      (let [tc (chan)] ; the throttled chan
         (ca/go
           (while (ca/<! bucket) ; park for a token
             (dotimes [_ (long token-value)]
-              (when-not (ops/pipe1 c tc)
+              (when-not (pipe1 c tc)
                 (ca/close! bucket)))))
         tc))))
 
@@ -128,7 +155,7 @@
    ((chan-throttler rate unit bucket-size) c)))
 
 
-(extend-protocol proto/IEmptyBuffer
+(extend-protocol proto/IEmpty
   FixedBuffer
   (clone-empty [b]  (ca/buffer (.n b)))
   DroppingBuffer
@@ -136,7 +163,7 @@
   SlidingBuffer
   (clone-empty [b] (ca/sliding-buffer (.n b)))
   PromiseBuffer
-  (clone-empty [_] (buffers/promise-buffer))
+  (clone-empty [_] (ca-buffers/promise-buffer))
   )
 
 (defn empty-buffer

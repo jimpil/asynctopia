@@ -1,8 +1,7 @@
-(ns asynctopia.protocols
-  (:import (asynctopia.protocols IEmptyBuffer ISnapshotBuffer)))
+(ns asynctopia.protocols)
 
-(defprotocol IEmptyBuffer
+(defprotocol IEmpty
   (clone-empty [this]))
 
-(defprotocol ISnapshotBuffer
+(defprotocol ISnapshot
   (snapshot [this]))

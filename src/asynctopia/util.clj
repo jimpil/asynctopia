@@ -1,5 +1,6 @@
 (ns asynctopia.util
-  (:import (clojure.core.async.impl.channels ManyToManyChannel)))
+  (:import (clojure.core.async.impl.channels ManyToManyChannel)
+           (java.util Collection)))
 
 (defn println-error-handler
   [^Throwable t]
@@ -21,3 +22,7 @@
   "Returns the underlying buffer of channel <ch>."
   [^ManyToManyChannel ch]
   (.buf ch))
+
+(defn snapshot-java-collection
+  [^Collection coll]
+  (vec (.toArray coll)))
