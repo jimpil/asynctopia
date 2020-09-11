@@ -37,7 +37,8 @@
   "Drop-in (NOT thread-safe) replacement for
    `clojure.core.async.impl.buffers/fixed-buffer`
    that uses an `ArrayDeque` (rather than a `LinkedList`)
-   as the underlying buffer."
+   as the underlying buffer. Do NOT pass an instance of
+   `ConcurrentLinkedDeque` as the first arg (see `ts-fixed-buffer`)."
   ([n]
    (fixed-buffer nil n))
   ([^Deque dq ^long n]
@@ -68,7 +69,8 @@
   "Drop-in (NOT thread-safe) replacement for
    `clojure.core.async.impl.buffers/dropping-buffer`
    that uses an `ArrayDeque` (rather than a `LinkedList`)
-   as the underlying buffer."
+   as the underlying buffer. Do NOT pass an instance of
+   `ConcurrentLinkedDeque` as the first arg (see `ts-dropping-buffer`)."
   ([n]
    (dropping-buffer nil n))
   ([^Deque dq ^long n]
@@ -100,7 +102,8 @@
   "Drop-in (NOT thread-safe) replacement for
    `clojure.core.async.impl.buffers/sliding-buffer`
    that uses an `ArrayDeque` (rather than a `LinkedList`)
-   as the underlying buffer."
+   as the underlying buffer. Do NOT pass an instance of
+   `ConcurrentLinkedDeque` as the first arg (see `ts-sliding-buffer`)."
   ([^long n]
    (sliding-buffer n))
   ([^Deque dq ^long n]
