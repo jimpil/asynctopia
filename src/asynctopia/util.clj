@@ -7,7 +7,6 @@
   (println "[ERROR]:" (.getMessage t)))
 
 (defonce throwable? (partial instance? Throwable))
-(defonce noop       (constantly nil))
 
 (defonce unit->ms
   {:microsecond 0.001

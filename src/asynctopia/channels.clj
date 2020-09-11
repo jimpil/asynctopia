@@ -1,11 +1,11 @@
 (ns asynctopia.channels
   (:require [clojure.core.async :as ca]
+            [clojure.core.async.impl.buffers :as ca-buffers]
             [clojure.java.io :as io]
             [asynctopia
+             [protocols :as proto]
              [buffers :as buffers]
-             [util :as ut]]
-            [asynctopia.protocols :as proto]
-            [clojure.core.async.impl.buffers :as ca-buffers])
+             [util :as ut]])
   (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)))
 (defn chan
   "Drop-in replacement for `clojure.async.core/chan`, supporting

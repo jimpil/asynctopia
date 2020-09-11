@@ -24,8 +24,8 @@
                         :to-error to-error
                         :buffer buffer)
              (ca/split error?))]
-    (ops/go-consume! values-chan identity) ;; main consuming loop
-    (ops/go-consume! errors-chan error!))) ;; error handling loop
+    (ops/drain values-chan)              ;; main consuming loop
+    (ops/sink-with error! errors-chan))) ;; error handling loop
 
 
 (defn pkeep

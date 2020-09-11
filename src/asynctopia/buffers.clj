@@ -3,7 +3,7 @@
             [asynctopia.protocols :as proto]
             [asynctopia.util :as ut])
   (:import (java.util ArrayDeque Deque)
-           (clojure.lang Counted)
+           (clojure.lang Counted IFn)
            (java.util.concurrent ConcurrentLinkedDeque)))
 
 ;; Drop-in buffer replacements backed by an `ArrayDeque`
@@ -45,14 +45,15 @@
    (-> (or dq (ArrayDeque. n))
        (FixedBuffer. n))))
 
-(deftype DroppingBuffer [^Deque buf ^long n]
+(deftype DroppingBuffer [^Deque buf ^long n ^IFn dropped!]
   impl/UnblockingBuffer
   impl/Buffer
   (full? [this] false)
   (remove! [this]
     (.removeLast buf))
   (add!* [this itm]
-    (when-not (>= (count this) n)
+    (if (>= (count this) n)
+      (dropped! itm)
       (.addFirst buf itm))
     this)
   (close-buf! [this])
@@ -72,12 +73,14 @@
    as the underlying buffer. Do NOT pass an instance of
    `ConcurrentLinkedDeque` as the first arg (see `ts-dropping-buffer`)."
   ([n]
-   (dropping-buffer nil n))
-  ([^Deque dq ^long n]
+   (dropping-buffer n nil))
+  ([n dropped!]
+   (dropping-buffer nil n dropped!))
+  ([^Deque dq ^long n dropped!]
    (-> (or dq (ArrayDeque. n))
-       (DroppingBuffer. n))))
+       (DroppingBuffer. n (or dropped! identity)))))
 
-(deftype SlidingBuffer [^Deque buf ^long n]
+(deftype SlidingBuffer [^Deque buf ^long n ^IFn slided!]
   impl/UnblockingBuffer
   impl/Buffer
   (full? [this] false)
@@ -85,7 +88,7 @@
     (.removeLast buf))
   (add!* [this itm]
     (when (= (count this) n)
-      (impl/remove! this))
+      (slided! (impl/remove! this)))
     (.addFirst buf itm)
     this)
   (close-buf! [this])
@@ -104,11 +107,13 @@
    that uses an `ArrayDeque` (rather than a `LinkedList`)
    as the underlying buffer. Do NOT pass an instance of
    `ConcurrentLinkedDeque` as the first arg (see `ts-sliding-buffer`)."
-  ([^long n]
-   (sliding-buffer n))
-  ([^Deque dq ^long n]
+  ([n]
+   (sliding-buffer n nil))
+  ([n slided!]
+   (sliding-buffer nil n slided!))
+  ([^Deque dq ^long n slided!]
    (-> (or dq (ArrayDeque. n))
-       (SlidingBuffer. n))))
+       (SlidingBuffer. n (or slided! identity)))))
 ;;==============================================================================
 ;;------------------------------------------------------------------------------
 ;;==============================================================================
@@ -150,7 +155,7 @@
      (volatile! 0)
      n)))
 
-(deftype ThreadSafeDroppingBuffer [^ConcurrentLinkedDeque buf cnt ^long n]
+(deftype ThreadSafeDroppingBuffer [^ConcurrentLinkedDeque buf cnt ^long n dropped!]
   impl/UnblockingBuffer
   impl/Buffer
   (full? [this] false)
@@ -159,9 +164,10 @@
       (vswap! cnt unchecked-dec)
       x))
   (add!* [this itm]
-    (when-not (>= (count this) n)
-      (.addFirst buf itm)
-      (vswap! cnt unchecked-inc))
+    (if (>= (count this) n)
+      (dropped! itm)
+      (do (.addFirst buf itm)
+          (vswap! cnt unchecked-inc)))
     this)
   (close-buf! [this])
   Counted
@@ -178,14 +184,17 @@
 (defn ts-dropping-buffer
   "Dropping buffer backed by a `ConcurrentLinkedDeque`."
   ([n]
-   (ts-dropping-buffer nil n))
-  ([_ n]
+   (ts-dropping-buffer n nil))
+  ([n dropped!]
+   (ts-dropping-buffer nil n dropped!))
+  ([_ n dropped!]
    (ThreadSafeDroppingBuffer.
      (ConcurrentLinkedDeque.)
      (volatile! 0)
-     n)))
+     n
+     (or dropped! identity))))
 
-(deftype ThreadSafeSlidingBuffer [^ConcurrentLinkedDeque buf cnt ^long n]
+(deftype ThreadSafeSlidingBuffer [^ConcurrentLinkedDeque buf cnt ^long n slided!]
   impl/UnblockingBuffer
   impl/Buffer
   (full? [this] false)
@@ -195,7 +204,7 @@
       x))
   (add!* [this itm]
     (when (= (count this) n)
-      (impl/remove! this))
+      (slided! (impl/remove! this)))
     (.addFirst buf itm)
     (vswap! cnt unchecked-inc)
     this)
@@ -214,12 +223,15 @@
 (defn ts-sliding-buffer
   "Sliding buffer backed by a `ConcurrentLinkedDeque`."
   ([n]
-   (ts-sliding-buffer nil n))
-  ([_ n]
+   (ts-sliding-buffer n nil))
+  ([n slided!]
+   (ts-sliding-buffer nil n slided!))
+  ([_ n slided!]
    (ThreadSafeSlidingBuffer.
      (ConcurrentLinkedDeque.)
      (volatile! 0)
-     n)))
+     n
+     (or slided! identity))))
 
 (defn snapshot-buffer
   "Returns the (current) contents of this channel's (thread-safe) buffer."
@@ -229,7 +241,9 @@
 (defn- buffer*
   [buf-or-n fixed dropping sliding]
   (cond
-    (number? buf-or-n) (fixed buf-or-n)
+    (number? buf-or-n)
+    (fixed buf-or-n)
+
     (sequential? buf-or-n)
     (let [[semantics n dq] buf-or-n]
       (case semantics

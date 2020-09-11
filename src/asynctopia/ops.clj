@@ -8,16 +8,23 @@
   [f from & {:keys [to-error buffer]
              :or {to-error identity
                   buffer 1024}}]
-  ;; returns the `to` channel (2nd arg)
-  (ca/pipe from (channels/chan buffer (keep f) to-error)))
+  (->> (channels/chan buffer (keep f) to-error)
+       (ca/pipe from))) ;; returns the `to` channel (2nd arg)
 
-(defmacro go-consume!
-  ""
-  [c f]
-  `(ca/go-loop []
-     (when-some [x# (ca/<! ~c)]
-       (~f x#)
-       (recur))))
+(defn sink-with
+  "Generic sinking `go-loop`. Fully consumes
+   channel <ch>, passing the taken values through
+   <f> (presumably side-effecting, ideally non-blocking)."
+  [f ch]
+  (ca/go-loop []
+    (when-some [x (ca/<! ch)]
+      (f x)
+      (recur))))
+
+(def drain
+  "Fully consumes a channel disregarding its contents.
+   Useful against a piped `to` channel that uses a transducer."
+  (partial sink-with identity))
 
 (defmacro nil-converting
   "If <x> is nil returns ::nil.
