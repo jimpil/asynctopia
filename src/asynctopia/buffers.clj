@@ -229,7 +229,6 @@
 (defn- buffer*
   [buf-or-n fixed dropping sliding]
   (cond
-    (nil? buf-or-n)    (fixed 1024)
     (number? buf-or-n) (fixed buf-or-n)
     (sequential? buf-or-n)
     (let [[semantics n dq] buf-or-n]
@@ -237,7 +236,7 @@
         :fixed    (fixed dq n)
         :dropping (dropping dq n)
         :sliding  (sliding dq n)))
-    ;; assuming some instance from this namespace
+    ;; assuming some instance from this namespace (or nil)
     :else buf-or-n))
 
 (defn buf
