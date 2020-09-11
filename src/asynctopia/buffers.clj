@@ -109,7 +109,7 @@
 ;;==============================================================================
 ;;------------------------------------------------------------------------------
 ;;==============================================================================
-
+;; Drop-in buffer replacements backed by an `ConcurrentLinkedDeque` (thread-safe)
 (declare ts-fixed-buffer ts-dropping-buffer ts-sliding-buffer)
 
 (deftype ThreadSafeFixedBuffer [^ConcurrentLinkedDeque buf cnt ^long n]
