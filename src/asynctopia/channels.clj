@@ -169,6 +169,6 @@
   "Returns a new/empty buffer of the same type and (buffering) capacity
    as the provided channel's buffer."
   [ch]
-  (proto/clone-empty (ut/channel-buffer ch)))
+  (proto/clone-empty (ut/get-channel-buffer ch)))
 
 

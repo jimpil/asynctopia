@@ -239,28 +239,28 @@
 (defn snapshot-buffer
   "Returns the (current) contents of this channel's (thread-safe) buffer."
   [ch]
-  (proto/snapshot (ut/channel-buffer ch)))
+  (proto/snapshot (ut/get-channel-buffer ch)))
 ;;===========================================================================
-(defn- buffer*
+(defn- channel-buffer*
   [buf-or-n fixed dropping sliding]
   (cond
     (number? buf-or-n)
     (fixed buf-or-n)
 
     (sequential? buf-or-n)
-    (let [[semantics n dq] buf-or-n]
+    (let [[semantics n dq react!] buf-or-n]
       (case semantics
         :fixed    (fixed dq n)
-        :dropping (dropping dq n)
-        :sliding  (sliding dq n)))
+        :dropping (dropping dq n react!)
+        :sliding  (sliding dq n react!)))
     ;; assuming some instance from this namespace (or nil)
     :else buf-or-n))
 
 (defn buf
-  "Flexible/convenient ctor function for buffers (similar to `chan`)."
+  "Flexible/convenient ctor function for buffers (in a similar vein to `chan`)."
   ([buf-or-n]
    (buf buf-or-n false))
   ([buf-or-n thread-safe?]
    (if thread-safe?
-     (buffer* buf-or-n ts-fixed-buffer ts-dropping-buffer ts-sliding-buffer)
-     (buffer* buf-or-n fixed-buffer    dropping-buffer    sliding-buffer))))
+     (channel-buffer* buf-or-n ts-fixed-buffer ts-dropping-buffer ts-sliding-buffer)
+     (channel-buffer* buf-or-n fixed-buffer    dropping-buffer    sliding-buffer))))

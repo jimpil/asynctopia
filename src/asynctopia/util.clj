@@ -17,7 +17,7 @@
    :day 86400000
    :month 2678400000})
 
-(defn channel-buffer
+(defn get-channel-buffer
   "Returns the underlying buffer of channel <ch>."
   [^ManyToManyChannel ch]
   (.buf ch))
