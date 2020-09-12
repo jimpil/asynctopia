@@ -64,15 +64,15 @@
 (deftest pkeep-tests
   (testing "pkeep"
     (let [data (range 10000)
-          ret (pkeep inc data :in-flight 4)
+          ret (ca/<!! (pkeep inc data :in-flight 4))
           expected (doall (keep inc data))]
-      (is (= @ret expected)))))
+      (is (= ret expected)))))
 
 (deftest with-timeout-tests
   (testing "with-timeout"
-    (is (= :done @(with-timeout 600 :timeout (Thread/sleep 500) :done)))
-    (is (= :timeout @(with-timeout 400 :timeout (Thread/sleep 500) :done)))
-    (is (nil? @(with-timeout 600 :timeout (Thread/sleep 500))))
+    (is (= :done (ca/<!! (with-timeout 600 :timeout (Thread/sleep 500) :done))))
+    (is (= :timeout (ca/<!! (with-timeout 400 :timeout (Thread/sleep 500) :done))))
+    (is (nil? (ca/<!! (with-timeout 600 :timeout (Thread/sleep 500)))))
     )
 
   )

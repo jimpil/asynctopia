@@ -3,7 +3,8 @@
             [asynctopia
              [ops :as ops]
              [channels :as channels]
-             [util :as ut]]))
+             [util :as ut]
+             [null :as null]]))
 
 (defn consuming-with
   "Sets up two `go` loops for consuming values VS errors
@@ -21,51 +22,45 @@
   (let [[errors-chan values-chan]
         (->> (ops/pipe-with consume!
                         from
-                        :to-error to-error
+                        :error! to-error
                         :buffer buffer)
              (ca/split error?))]
-    (ops/drain values-chan)              ;; main consuming loop
-    (ops/sink-with error! errors-chan))) ;; error handling loop
+    ;; main consuming loop
+    (ops/drain values-chan)
+    ;; error handling loop (if a nested error occurs swallow it)
+    (ops/sink-with error! errors-chan identity)))
 
 
 (defn pkeep
   "Parallel `(keep f)` across <coll>, handling errors with <error!>.
    <in-flight> controls parallelism (per `pipeline-blocking`).
-   If <async?> is true (default), immediately returns a promise which will
-   (eventually) be delivered with a vector of results, otherwise the vector is
-   (synchronously) returned. The aforementioned vector may actually be smaller
-   than <coll> (per `keep` semantics)."
-  [f coll & {:keys [error! in-flight async?]
+   Returns a channel containing the single (collection) result
+   (i.e. take a single element from it). The aforementioned collection
+   may actually be smaller than <coll> (per `keep` semantics)."
+  [f coll & {:keys [error! in-flight]
              :or {in-flight 1
-                  async? true
                   error! ut/println-error-handler}}]
   (let [in-chan  (ca/to-chan! coll)
-        out-chan (channels/chan)
-        ret (when async? (promise))]
+        out-chan (ca/chan)]
     (ca/pipeline-blocking in-flight
                           out-chan
                           (keep f)
                           in-chan
                           true
                           error!)
-    (let [ret-chan (ca/into [] out-chan)]
-      (if (nil? ret)
-        (ca/<!! ret-chan)
-        (do (ca/go (ops/<!?deliver ret-chan ret))
-            ret)))))
+    (ca/into [] out-chan)))
 
 (defmacro with-timeout
-  "Returns a promise which will (eventually) receive
+  "Returns a channel which will (eventually) receive
    either the result of <body>, or <timeout-val>."
   [ms timeout-val & body]
-  `(let [ret-chan# (ca/promise-chan)
-         ret# (promise)]
+  `(let [ret-chan# (ca/promise-chan)]
      (ca/go (ops/>!? ret-chan# (do ~@body)))
      (ca/go
        (let [[x#] (ca/alts! [(ca/timeout ~ms) ret-chan#])]
-         (->> (if (nil? x#) ~timeout-val (ops/nil-restoring x#))
-              (deliver ret#))))
-     ret#))
+         (if (nil? x#)
+           ~timeout-val
+           (null/restoring x#))))))
 
 
 (defn thread-and ;; adapted from https://stackoverflow.com/questions/17621344/with-clojure-threading-long-running-processes-and-comparing-their-returns

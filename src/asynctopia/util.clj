@@ -7,6 +7,7 @@
   (println "[ERROR]:" (.getMessage t)))
 
 (defonce throwable? (partial instance? Throwable))
+(defonce chan?      (partial instance? ManyToManyChannel))
 
 (defonce unit->ms
   {:microsecond 0.001
