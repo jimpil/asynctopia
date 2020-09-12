@@ -111,7 +111,16 @@ This can form the basis of a simple (in-process) event-bus (events arrive,
 and distributed to their respective topic processors).
 
 ### asynctopia.buffers
+#### buf \[buf-or-n thread-safe?\]
+The only buffer constructor-fn you will ever need. Apart from a number,
+it also supports a vector of 2-4 elements `[semantics n dq react!]`. 
 
+- semantics: one of `:fixed`/`:dropping`/`:sliding`
+- n: a positive integer - defaults to 1024
+- dq: any instance of `Deque` (NOT a `ConcurrentLinkedDeque` - see `thread-safe?` for that). Defaults to `ArrayDeque`
+- react!: a 1-arg fn to be called when an item is dropped (`:dropping` semantics), or slided (`:sliding` semantics)
+
+When `thread-safe?` is true (NOT the default), the returned buffer will also support safe snapshotting (see `proto/snapshot`).
 
 ### asynctopia.channels
 

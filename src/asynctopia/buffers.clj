@@ -248,7 +248,8 @@
     (fixed buf-or-n)
 
     (sequential? buf-or-n)
-    (let [[semantics n dq react!] buf-or-n]
+    (let [[semantics n dq react!] buf-or-n
+          n (or n 1024)]
       (case semantics
         :fixed    (fixed dq n)
         :dropping (dropping dq n react!)

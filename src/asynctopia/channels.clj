@@ -6,10 +6,9 @@
             [asynctopia
              [protocols :as proto]
              [buffers :as buffers]
-             [util :as ut]]
-            [clojure.core.async.impl.timers :as timers])
-  (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)
-           (clojure.core.async.impl.timers TimeoutQueueEntry)))
+             [util :as ut]])
+  (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)))
+
 (defn chan
   "Drop-in replacement for `clojure.async.core/chan`, supporting
    any `Deque` buffer (not just `LinkedList`). This can be achieved
@@ -29,21 +28,6 @@
    (-> buf-or-n
        (buffers/buf thread-safe-buffer?)
        (ca/chan xform ex-handler))))
-
-
-(defn close!
-  "Closes a channel. The channel will no longer accept any puts (they
-  will be ignored). Data in the channel remains available for taking, until
-  exhausted, after which takes will return nil. If there are any
-  pending takes, they will be dispatched with nil. Closing a closed
-  channel is a no-op. Returns nil.
-
-  Logically closing happens after all puts have been delivered. Therefore, any
-  blocked or parked puts will remain blocked/parked until a taker releases them."
-
-  [chan]
-  (when-not (some-> (meta chan) ::timeout?)
-    (impl/close! chan)))
 
 (defn line-chan
   "Returns a channel that will receive all the lines
