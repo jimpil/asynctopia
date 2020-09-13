@@ -37,12 +37,12 @@
   ([ch coll]
    (onto-chan! ch coll true))
   ([ch coll close?]
-   (onto-chan! ch coll close? (constantly nil)))
+   (onto-chan! ch coll close? nil))
   ([ch coll close? on-close!]
    (ca/go-loop [vs (seq coll)]
      (if (and vs (ca/>! ch (null/replacing (first vs))))
        (recur (next vs))
-       (do (on-close!)
+       (do (when on-close! (on-close!))
            (when close? (ca/close! ch)))))))
 
 (defn line-chan
