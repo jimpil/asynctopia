@@ -99,7 +99,7 @@
     ;; is 1 and we adjust sleep-time to obtain the desired rate.
 
     (fn [c]
-      (let [tc (ca/chan)] ; the throttled chan
+      (let [tc (chan)] ; the throttled chan
         (ca/go
           (while (ca/<! bucket) ; park for a token
             (dotimes [_ (long token-value)]

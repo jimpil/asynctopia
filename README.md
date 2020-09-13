@@ -18,20 +18,27 @@ FIXME
 
 ## How
 ### asynctopia.null
-Contains two functions for dealing with `nil`. Writers will want to use `converting` right before putting, 
-whereas readers will want to use `restoring` right after taking. Following this pattern/convention provides
-nil-safety to producers (`nil` may be a perfectly valid value, but cannot be conveyed via a channel), 
-and transparency to consumers (they will receive what was actually produced). Without this dance, you have to 
-carefully vet every single producer that interacts with `core.async`, and that is not easy.
+In typical Clojure code `nil` is not something to be terrified of. Any function invocation can potentially return nil, 
+and in many contexts it will have a meaning (e.g. there are no more elements in this collection). There is even a higher 
+level construct (`fnil`) to assist with consuming a potentially dangerous `nil`.
+
+Contrast that with typical `core.async` code, where `nil` is simply not allowed. What do you do with all the 
+functions (you already have) that may produce `nil`, or the ones that are able to consume `nil`? 
+This namespace tries to address this by establishing a symmetric convention (on the way in, and on the way out).
+ 
+Writers (way in) will want to use `replacing` right before putting, whereas readers (way out) will want to 
+use `restoring` right after taking. Following this pattern/convention provides nil-safety to producers 
+(`nil` may be a perfectly valid value, but cannot be conveyed via a channel), and transparency to consumers 
+(they will receive what was actually produced). Without this dance, you have to carefully vet every single producing-fn 
+that interacts with `core.async`, and that is not always easy.
   
-See `asynctopia.ops/>!?` for a higher-level construct that makes use of this, and is a good candidate for by writers 
+See `asynctopia.ops/>!?` for a higher-level construct that makes use of this, and is a good candidate for writers 
 (as opposed to the lower-level `converting` macro). 
 
 ### asynctopia.ops
 #### pipe-with \[f from & {:keys \[error! buffer\]}\]
 Pipes the `from` channel into a newly created output-channel 
-returning the latter. Errors thrown by `f` are handled with `error!` 
-(defaults to simply printing the error message). 
+returning the latter. Errors thrown by `f` are handled with `error!` (defaults to simply printing the error message). 
 
 Honors the `asynctopia.null` convention. 
 
@@ -39,17 +46,14 @@ Honors the `asynctopia.null` convention.
 Generic sinking `go-loop`. Fully consumes the provided channel 
 passing the taken values through `f` (presumably side-effecting, ideally non-blocking).
 Errors thrown by `f` are handled with `error!` (defaults to simply printing the error message).
-
 Honors the `asynctopia.null` convention. 
 
 #### mix-with \[f out-chan in-chans error!\]
 Creates a `mix` against `out-chan`, adds all `in-chans` to it,
 and starts sinking `out-chan` with `f`. Returns the `mix` object.
-
-You will need to close `out-chan` in order to stop the mixing/sinking loops 
-(i.e. closing `in-chans` or unmixing  won't suffice). 
-
 Honors the `asynctopia.null` convention. 
+
+You will need to close `out-chan` in order to stop the mixing/sinking loops (i.e. closing `in-chans` or unmixing  won't suffice). 
 
 #### drain \[ch\]
 Drains the provided channel, disregarding its contents.
@@ -59,10 +63,13 @@ Takes from channel `ch` and delivers the value to promise `p`.
 Honors the `asynctopia.null` convention. 
 
 #### >!? \[ch x\]
-Nil-safe variant of `>!` (i.e. If `x` is nil, will put `:asynctopia.null/nil`). 
+Nil-safe variant of `>!` (i.e. If `x` is `nil`, will put `:asynctopia.null/nil`). 
+Encapsulates half of the `asynctopia.null` convention (writing). 
+The other half (reading) must be done manually.
 
 #### merge-reduce \[f init chan & chans\]
-Merges all channels and reduces them with `f`.
+Merges all channels and reduces them with `f`. 
+Honors the `asynctopia.null` convention. 
 
 ### asynctopia.core
 #### consuming-with \[consume! from & {:keys \[error? error! to-error buffer\]}\]
@@ -70,6 +77,7 @@ Sets up two `go` loops for consuming values VS errors (identified by the `error?
 from the `from` channel. Values are consumed via `consume!`, whereas errors via `error!`.
 The ideal consuming fns would submit to some thread-pool, send-off to some agent, 
 or something along these lines (i.e. non-blocking). Both `go` loops gracefully terminate when `from` is closed.
+Honors the `asynctopia.null` convention.
 
 The three optional error fns are semantically related. Observe the defaults as a guide: 
  
@@ -81,14 +89,11 @@ If for example your `to-error` fn constructed an error-map (from the Throwable),
 would typically check that the map contains some error key, and your `error!` would do something 
 with the value of that key. 
 
-Honors the `asynctopia.null` convention. 
-
-#### pkeep \[f coll & {:keys \[error! in-flight async?\]\]}
+#### pkeep \[f coll & {:keys \[error! in-flight\]\]}
 Parallel keep (bounded by `in-flight`) of `f` across `coll` (via `pipeline-blocking`).
 Errors thrown by `f` are handled with `error!`. Returns a channel containing the single 
-(collection) result (i.e. take one item).
-
-Does NOT honor the `asynctopia.null` convention (and that's why it's not called `pmap`).  
+(collection) result (i.e. take one item). Does NOT honor the `asynctopia.null` convention 
+(and that's why it's not called `pmap`).  
 
 #### with-timeout \[ms timeout-val & body\]
 Returns a channel which will (eventually) receive either the result of `(do body)`, 
@@ -117,12 +122,29 @@ it also supports a vector of 2-4 elements `[semantics n dq react!]`.
 
 - semantics: one of `:fixed`/`:dropping`/`:sliding`
 - n: a positive integer - defaults to 1024
-- dq: any instance of `Deque` (NOT a `ConcurrentLinkedDeque` - see `thread-safe?` for that). Defaults to `ArrayDeque`
+- dq: any instance of `Deque` (NOT a `ConcurrentLinkedDeque` - see `thread-safe?` for that) - defaults to `ArrayDeque`
 - react!: a 1-arg fn to be called when an item is dropped (`:dropping` semantics), or slided (`:sliding` semantics)
 
-When `thread-safe?` is true (NOT the default), the returned buffer will also support safe snapshotting (see `proto/snapshot`).
+When `thread-safe?` is true (NOT the default), the returned buffer will be backed by a `ConcurrentLinkedDeque`, 
+thus supporting safe snapshotting (see `proto/snapshot`).
 
 ### asynctopia.channels
+#### chan \[buf-or-n xform ex-handler thread-safe-buffer?\]
+Drop-in replacement for `clojure.async.core/chan`, supporting any `Deque` buffer (not just `LinkedList`).
+See `buffers/buf` for an explanation on what `buf-or-n` can be, and what `thread-safe-buffer?` means.
+
+#### line-chan \[src buf-or-n xform ex-handler\]
+Returns a channel that will receive all the lines in <src> (via `line-seq`) transformed per <xform>.
+
+#### counting-chan \[ch\]
+Returns a channel that will receive the total number of elements taken from `ch`.
+
+#### throttled-chan \[ch rate unit bucket-size\]
+This was taken/adapted from [throttler](https://github.com/brunoV/throttler).
+
+Takes a write channel, a goal rate and a unit and returns a read channel. 
+Messages written to the input channel can be read from the throttled output channel at a maximum `rate`.
+The `bucket-size` controls burstiness  (defaults to 1). 
 
 
 ## License

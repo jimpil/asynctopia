@@ -12,7 +12,7 @@
   [f from & {:keys [error! buffer]
              :or {error! ut/println-error-handler
                   buffer 1024}}]
-  (->> (channels/chan buffer (map (comp null/converting f)) error!)
+  (->> (channels/chan buffer (map (comp null/replacing f)) error!)
        (ca/pipe from))) ;; returns the `to` channel (2nd arg)
 
 (defn sink-with
@@ -59,7 +59,7 @@
    If <x> is nil, will put ::nil.
    Must be called withing a `go` block."
   [ch x]
-  `(ca/>! ~ch (null/converting ~x)))
+  `(ca/>! ~ch (null/replacing ~x)))
 
 (defn merge-reduce
   "If no <chans> are provided, essentially a wrapper to `ca/reduce`,
@@ -68,4 +68,4 @@
   (->> (if (seq chans)
          (ca/merge (cons chan chans))
          chan)
-       (ca/reduce f init)))
+       (ca/reduce (comp f null/restoring) init)))
