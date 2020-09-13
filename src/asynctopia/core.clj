@@ -2,7 +2,6 @@
   (:require [clojure.core.async :as ca]
             [asynctopia
              [ops :as ops]
-             [channels :as channels]
              [util :as ut]
              [null :as null]]))
 
@@ -32,21 +31,22 @@
 
 
 (defn pkeep
-  "Parallel `(keep f)` across <coll>, handling errors with <error!>.
-   <in-flight> controls parallelism (per `pipeline-blocking`).
-   Errors thrown by <f> are handled with <error>`. <blocking-input?>
-   controls how to turn <coll> into an input channel (`to-chan!` VS `to-chan!!`),
-   whereas `buffer` controls how the output channel will be buffered (defaults to `(count coll)`).
+  "Parallel `(keep f)` across <coll> (collection or channel),
+   handling errors with <error!>. <in-flight> controls parallelism
+   (per `pipeline-blocking`).  <blocking-input?> controls how to turn
+   <coll> into an input channel (`to-chan!` VS `to-chan!!`), whereas `buffer`
+   controls how the output channel will be buffered (defaults to `(count coll)`).
    Returns a channel containing the single (collection) result
    (i.e. take a single element from it). The aforementioned collection
    may actually be smaller than <coll> (per `keep` semantics)."
   [f coll & {:keys [error! in-flight buffer blocking-input?]
              :or {in-flight 1
+                  buffer 1024
                   error! ut/println-error-handler}}]
   (let [channel-input? (ut/chan? coll)
         to-chan* (if blocking-input? ca/to-chan!! ca/to-chan!)
         in-chan  (if channel-input? coll (to-chan* coll))
-        out-chan (ca/chan (or buffer (if channel-input? 1024 (count coll))))]
+        out-chan (ca/chan buffer)]
     (ca/pipeline-blocking in-flight
                           out-chan
                           (keep f)
