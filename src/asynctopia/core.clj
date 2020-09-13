@@ -32,7 +32,7 @@
 
 
 (defn pkeep
-  "Parallel `(keep f)` across <coll> (collection or channel),
+  "Parallel `(keep f)` across <input> (collection or channel),
    handling errors with <error!>. <in-flight> controls parallelism
    (per `pipeline-blocking`).  <blocking-input?> controls how to turn
    <coll> into an input channel (`to-chan!` VS `to-chan!!`), whereas `buffer`
@@ -40,13 +40,13 @@
    Returns a channel containing the single (collection) result
    (i.e. take a single element from it). The aforementioned collection
    may actually be smaller than <coll> (per `keep` semantics)."
-  [f coll & {:keys [error! in-flight buffer blocking-input?]
-             :or {in-flight 1
-                  buffer 1024
-                  error! ut/println-error-handler}}]
-  (let [channel-input? (ut/chan? coll)
+  [f input & {:keys [error! in-flight buffer blocking-input?]
+              :or {in-flight 1
+                   buffer 1024
+                   error! ut/println-error-handler}}]
+  (let [channel-input? (ut/chan? input)
         to-chan* (if blocking-input? ca/to-chan!! ca/to-chan!)
-        in-chan  (if channel-input? coll (to-chan* coll))
+        in-chan  (if channel-input? input (to-chan* input))
         out-chan (channels/chan buffer)]
     (ca/pipeline-blocking in-flight
                           out-chan

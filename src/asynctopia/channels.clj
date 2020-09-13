@@ -1,13 +1,13 @@
 (ns asynctopia.channels
   (:require [clojure.core.async :as ca]
-            [clojure.core.async.impl.protocols :as impl]
             [clojure.core.async.impl.buffers :as ca-buffers]
             [clojure.java.io :as io]
             [asynctopia
              [protocols :as proto]
              [buffers :as buffers]
              [util :as ut]])
-  (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)))
+  (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)
+           (java.io BufferedReader)))
 
 (defn chan
   "Drop-in replacement for `clojure.async.core/chan`, supporting
@@ -29,22 +29,34 @@
        (buffers/buf thread-safe-buffer?)
        (ca/chan xform ex-handler))))
 
+(defn onto-chan!
+  "Like `ca/onto-chan!` but supporting an extra argument <close!>.
+   This is expected to be a no-arg fn which will be called when
+   <coll> is exhausted."
+  ([ch coll] (onto-chan! ch coll true))
+  ([ch coll close?]
+   (onto-chan! ch coll close? (constantly nil)))
+  ([ch coll close? on-close!]
+   (ca/go-loop [vs (seq coll)]
+     (if (and vs (ca/>! ch (first vs)))
+       (recur (next vs))
+       (do (when close? (ca/close! ch))
+           (on-close!))))))
+
 (defn line-chan
   "Returns a channel that will receive all the lines
    in <src> (via `line-seq`) transformed per <xform>."
   ([src]
-   (line-chan src 1024))
+   (line-chan src nil))
   ([src buf-or-n]
-   (line-chan src buf-or-n (map identity)))
+   (line-chan src buf-or-n nil))
   ([src buf-or-n xform]
-   (line-chan src buf-or-n xform ut/println-error-handler))
+   (line-chan src buf-or-n xform nil))
   ([src buf-or-n xform ex-handler]
-   (let [out-chan (chan buf-or-n xform ex-handler)]
-     (ca/go
-       (with-open [rdr (io/reader src)]
-         (doseq [line (line-seq rdr)]
-           (ca/>! out-chan line)))
-       (ca/close! out-chan))
+   (let [out-chan (chan buf-or-n xform ex-handler)
+         rdr (io/reader src)
+         close-rdr #(.close ^BufferedReader rdr)]
+     (onto-chan! out-chan (line-seq rdr) true close-rdr)
      out-chan)))
 
 (defn counting-chan
