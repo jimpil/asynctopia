@@ -4,7 +4,7 @@
 A Clojure library designed to assist with asynchronous processing (in the context of `core.async`).
 
 ## Why
-`core.async` is a powerful tool - not very different to a sharp knife. One can do wonderful or terrible things with a sharp knife.
+`core.async` is a sharp tool. One can do wonderful or terrible things with a sharp tool.
 The primary goal here is to provide solid high-level constructs in order to help people avoid common traps and pitfalls. 
 As a secondary goal I'm trying to provide some trivial utilities that have been requested through the official `core.async` JIRA.
 Finally, I realised that channel buffers do NOT need to be type-hinted as `LinkedList` - a mere `Deque` suffices. 
@@ -89,9 +89,11 @@ If for example your `to-error` fn constructed an error-map (from the Throwable),
 would typically check that the map contains some error key, and your `error!` would do something 
 with the value of that key. 
 
-#### pkeep \[f coll & {:keys \[error! in-flight\]\]}
+#### pkeep \[f coll & {:keys \[error! in-flight buffer blocking-input?\]\]}
 Parallel keep (bounded by `in-flight`) of `f` across `coll` (via `pipeline-blocking`).
-Errors thrown by `f` are handled with `error!`. Returns a channel containing the single 
+Errors thrown by `f` are handled with `error!`. `blocking-input?` controls how to turn `coll`
+into an input channel (`to-chan!` VS `to-chan!!`), whereas `buffer` controls how the output channel
+will be buffered (defaults to `(count coll)`). Returns a channel containing the single 
 (collection) result (i.e. take one item). Does NOT honor the `asynctopia.null` convention 
 (and that's why it's not called `pmap`).  
 
