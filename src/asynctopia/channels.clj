@@ -5,6 +5,7 @@
             [asynctopia
              [protocols :as proto]
              [buffers :as buffers]
+             [null :as null]
              [util :as ut]])
   (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)
            (java.io BufferedReader)))
@@ -33,15 +34,16 @@
   "Like `ca/onto-chan!` but supporting an extra argument <close!>.
    This is expected to be a no-arg fn which will be called when
    <coll> is exhausted."
-  ([ch coll] (onto-chan! ch coll true))
+  ([ch coll]
+   (onto-chan! ch coll true))
   ([ch coll close?]
    (onto-chan! ch coll close? (constantly nil)))
   ([ch coll close? on-close!]
    (ca/go-loop [vs (seq coll)]
-     (if (and vs (ca/>! ch (first vs)))
+     (if (and vs (ca/>! ch (null/replacing (first vs))))
        (recur (next vs))
-       (do (when close? (ca/close! ch))
-           (on-close!))))))
+       (do (on-close!)
+           (when close? (ca/close! ch)))))))
 
 (defn line-chan
   "Returns a channel that will receive all the lines
@@ -54,8 +56,8 @@
    (line-chan src buf-or-n xform nil))
   ([src buf-or-n xform ex-handler]
    (let [out-chan (chan buf-or-n xform ex-handler)
-         rdr (io/reader src)
-         close-rdr #(.close ^BufferedReader rdr)]
+         ^BufferedReader rdr (io/reader src)
+         close-rdr #(.close rdr)]
      (onto-chan! out-chan (line-seq rdr) true close-rdr)
      out-chan)))
 
