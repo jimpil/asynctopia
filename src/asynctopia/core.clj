@@ -3,6 +3,7 @@
             [asynctopia
              [ops :as ops]
              [util :as ut]
+             [channels :as channels]
              [null :as null]]))
 
 (defn consuming-with
@@ -20,9 +21,9 @@
 
   (let [[errors-chan values-chan]
         (->> (ops/pipe-with consume!
-                        from
-                        :error! to-error
-                        :buffer buffer)
+                            from
+                            :error! to-error
+                            :buffer buffer)
              (ca/split error?))]
     ;; main consuming loop
     (ops/drain values-chan)
@@ -46,7 +47,7 @@
   (let [channel-input? (ut/chan? coll)
         to-chan* (if blocking-input? ca/to-chan!! ca/to-chan!)
         in-chan  (if channel-input? coll (to-chan* coll))
-        out-chan (ca/chan buffer)]
+        out-chan (channels/chan buffer)]
     (ca/pipeline-blocking in-flight
                           out-chan
                           (keep f)
