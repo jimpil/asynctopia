@@ -77,7 +77,7 @@
      out-chan)))
 
 (defn count-chan
-  "Returns a channel that will receive the
+  "Returns a channel that will (eventually) receive the
    total number of elements taken from <ch>."
   [ch]
   (ca/go-loop [n 0]

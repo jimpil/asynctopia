@@ -68,6 +68,19 @@
            ~timeout-val
            (null/restoring x#))))))
 
+(defn with-counting
+  "Returns a vector of two channels. The first (buffered per <buffer>)
+   will receive items per <ch>, whereas the second will (eventually) receive
+   the total number of elements taken from <ch> (see `channels/count-chan`)."
+  [ch & {:keys [buffer]
+         :or {buffer 1024}}]
+  (let [multiple (ca/mult ch)
+        out-vs (channels/chan buffer)
+        out-count (channels/chan)]
+    (ca/tap multiple out-vs)
+    (ca/tap multiple out-count)
+    [out-vs (channels/count-chan out-count)]))
+
 
 (defn thread-and ;; adapted from https://stackoverflow.com/questions/17621344/with-clojure-threading-long-running-processes-and-comparing-their-returns
   "Calls each of the no-arg <fns> on a separate thread (via `future`).
