@@ -45,6 +45,22 @@
        (do (when on-close! (on-close!))
            (when close? (ca/close! ch)))))))
 
+(defn onto-chan!!
+  "Like `ca/onto-chan!!` but supporting an extra argument <close!>.
+   This is expected to be a no-arg fn which will be called when
+   <coll> is exhausted."
+  ([ch coll]
+   (onto-chan!! ch coll true))
+  ([ch coll close?]
+   (onto-chan!! ch coll close? nil))
+  ([ch coll close? on-close!]
+   (ca/thread
+     (loop [vs (seq coll)]
+       (if (and vs (ca/>!! ch (first vs)))
+         (recur (next vs))
+         (do (when on-close! (on-close!))
+             (when close? (ca/close! ch))))))))
+
 (defn line-chan
   "Returns a channel that will receive all the lines
    in <src> (via `line-seq`) transformed per <xform>."
@@ -56,12 +72,11 @@
    (line-chan src buf-or-n xform nil))
   ([src buf-or-n xform ex-handler]
    (let [out-chan (chan buf-or-n xform ex-handler)
-         ^BufferedReader rdr (io/reader src)
-         close-rdr #(.close rdr)]
-     (onto-chan! out-chan (line-seq rdr) true close-rdr)
+         ^BufferedReader rdr (io/reader src)]
+     (onto-chan!! out-chan (line-seq rdr) true #(.close rdr))
      out-chan)))
 
-(defn counting-chan
+(defn count-chan
   "Returns a channel that will receive the
    total number of elements taken from <ch>."
   [ch]
@@ -75,7 +90,7 @@
   ;; and report number of errors VS successes
   (->> (line-chan src 1024 (comp (remove empty?) (keep f)) identity)
        (ca/split ut/throwable?)
-       (map (comp ca/<!! counting-chan)) ;; => (0 120000)
+       (map (comp ca/<!! count-chan)) ;; => (0 120000)
        )
 
   )
