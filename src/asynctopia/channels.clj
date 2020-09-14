@@ -31,34 +31,34 @@
        (ca/chan xform ex-handler))))
 
 (defn onto-chan!
-  "Like `ca/onto-chan!` but supporting an extra argument <close!>.
+  "Like `ca/onto-chan!` but supporting an extra argument <done!>.
    This is expected to be a no-arg fn which will be called when
    <coll> is exhausted."
   ([ch coll]
    (onto-chan! ch coll true))
   ([ch coll close?]
    (onto-chan! ch coll close? nil))
-  ([ch coll close? on-close!]
+  ([ch coll close? done!]
    (ca/go-loop [vs (seq coll)]
      (if (and vs (ca/>! ch (null/replacing (first vs))))
        (recur (next vs))
-       (do (when on-close! (on-close!))
+       (do (when done! (done!))
            (when close? (ca/close! ch)))))))
 
 (defn onto-chan!!
-  "Like `ca/onto-chan!!` but supporting an extra argument <close!>.
+  "Like `ca/onto-chan!!` but supporting an extra argument <done!>.
    This is expected to be a no-arg fn which will be called when
    <coll> is exhausted."
   ([ch coll]
    (onto-chan!! ch coll true))
   ([ch coll close?]
    (onto-chan!! ch coll close? nil))
-  ([ch coll close? on-close!]
+  ([ch coll close? done!]
    (ca/thread
      (loop [vs (seq coll)]
        (if (and vs (ca/>!! ch (first vs)))
          (recur (next vs))
-         (do (when on-close! (on-close!))
+         (do (when done! (done!))
              (when close? (ca/close! ch))))))))
 
 (defn line-chan
