@@ -7,7 +7,10 @@
              [buffers :as buffers]
              [null :as null]
              [util :as ut]])
-  (:import (clojure.core.async.impl.buffers FixedBuffer DroppingBuffer SlidingBuffer PromiseBuffer)
+  (:import (clojure.core.async.impl.buffers FixedBuffer
+                                            DroppingBuffer
+                                            SlidingBuffer
+                                            PromiseBuffer)
            (java.io BufferedReader)))
 
 (defn chan
@@ -31,39 +34,34 @@
        (ca/chan xform ex-handler))))
 
 (defn onto-chan!
-  "Like `ca/onto-chan!` but supporting an extra argument <done!>.
-   This is expected to be a no-arg fn which will be called when
-   <coll> is exhausted."
+  "Like `ca/onto-chan!` but the 3rd argument is expected
+   to be a fn which will be called with <ch> when <coll>
+   is exhausted (defaults to `ca/close`)."
   ([ch coll]
-   (onto-chan! ch coll true))
-  ([ch coll close?]
-   (onto-chan! ch coll close? nil))
-  ([ch coll close? done!]
+   (onto-chan! ch coll ca/close!))
+  ([ch coll done!]
    (ca/go-loop [vs (seq coll)]
      (if (and vs (ca/>! ch (null/replacing (first vs))))
        (recur (next vs))
-       (do (when done! (done!))
-           (when close? (ca/close! ch)))))))
+       (when (fn? done!) (done! ch))))))
 
 (defn onto-chan!!
-  "Like `ca/onto-chan!!` but supporting an extra argument <done!>.
-   This is expected to be a no-arg fn which will be called when
-   <coll> is exhausted."
+  "Like `ca/onto-chan!!` but the 3rd argument is expected
+   to be a fn which will be called with <ch> when <coll>
+   is exhausted (defaults to `ca/close`)."
   ([ch coll]
-   (onto-chan!! ch coll true))
-  ([ch coll close?]
-   (onto-chan!! ch coll close? nil))
-  ([ch coll close? done!]
+   (onto-chan!! ch coll ca/close!))
+  ([ch coll done!]
    (ca/thread
      (loop [vs (seq coll)]
-       (if (and vs (ca/>!! ch (first vs)))
+       (if (and vs (ca/>!! ch (null/replacing (first vs))))
          (recur (next vs))
-         (do (when done! (done!))
-             (when close? (ca/close! ch))))))))
+         (when (fn? done!) (done! ch)))))))
 
 (defn line-chan
   "Returns a channel that will receive all the lines
-   in <src> (via `line-seq`) transformed per <xform>."
+   in <src> (via `line-seq`) transformed per <xform>,
+   and then close."
   ([src]
    (line-chan src nil))
   ([src buf-or-n]
@@ -73,8 +71,12 @@
   ([src buf-or-n xform ex-handler]
    (let [out-chan (chan buf-or-n xform ex-handler)
          ^BufferedReader rdr (io/reader src)]
-     (onto-chan!! out-chan (line-seq rdr) true #(.close rdr))
-     out-chan)))
+     (doto out-chan
+       (onto-chan!!
+         (line-seq rdr)
+         (fn [ch]
+           (.close rdr)
+           (ca/close! ch)))))))
 
 (defn count-chan
   "Returns a channel that will (eventually) receive the
