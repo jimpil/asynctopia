@@ -11,7 +11,8 @@
                                             DroppingBuffer
                                             SlidingBuffer
                                             PromiseBuffer)
-           (java.io BufferedReader)))
+           (java.io BufferedReader)
+           (java.util.stream Stream)))
 
 (defn chan
   "Drop-in replacement for `clojure.async.core/chan`, supporting
@@ -69,7 +70,7 @@
 (defn line-chan
   "Returns a channel that will receive all the lines
    in <src> (via `line-seq`) transformed per <xform>,
-   and then close."
+   and then close (also closing the underlying Reader)."
   ([src]
    (line-chan src nil))
   ([src buf-or-n]
@@ -84,6 +85,42 @@
          (fn [ch]
            (ca/close! ch)
            (.close rdr))))))) ;; don't forget the Reader!
+
+(defn stream-chan!!
+  "Returns a channel that will receive all the
+   elements in Stream <src> (via `onto-chan!!`)
+   transformed per <xform>, and then close (also closing <src>)."
+  ([src]
+   (stream-chan!! src nil))
+  ([src buf-or-n]
+   (stream-chan!! src buf-or-n nil))
+  ([src buf-or-n xform]
+   (stream-chan!! src buf-or-n xform nil))
+  ([^Stream src buf-or-n xform ex-handler]
+   (doto (chan buf-or-n xform ex-handler)
+     (onto-chan!!
+       (-> src .iterator iterator-seq)
+       (fn [ch]
+         (ca/close! ch)
+         (.close src))))))
+
+(defn stream-chan!
+  "Returns a channel that will receive all the
+   elements in Stream <src> (via `onto-chan!`)
+   transformed per <xform>, and then close (also closing <src>)."
+  ([src]
+   (stream-chan! src nil))
+  ([src buf-or-n]
+   (stream-chan! src buf-or-n nil))
+  ([src buf-or-n xform]
+   (stream-chan! src buf-or-n xform nil))
+  ([^Stream src buf-or-n xform ex-handler]
+   (doto (chan buf-or-n xform ex-handler)
+     (onto-chan!
+       (-> src .iterator iterator-seq)
+       (fn [ch]
+         (ca/close! ch)
+         (.close src))))))
 
 (defn count-chan
   "Returns a channel that will (eventually) receive the
