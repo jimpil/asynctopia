@@ -34,21 +34,26 @@
        (ca/chan xform ex-handler))))
 
 (defn onto-chan!
-  "Like `ca/onto-chan!` but the 3rd argument is expected
-   to be a fn which will be called with <ch> when <coll>
-   is exhausted (defaults to `ca/close`)."
+  "Drop-in replacement for `ca/onto-chan!`, with the optional support
+   for the 3rd argument to be a function which will be called with <ch>
+   when <coll> is exhausted (defaults to `ca/close` which is effectively
+   the same as `true`). It is also nil-safe (see the `asynctopia.null` convention)."
   ([ch coll]
    (onto-chan! ch coll ca/close!))
   ([ch coll done!]
    (ca/go-loop [vs (seq coll)]
      (if (and vs (ca/>! ch (null/replacing (first vs))))
        (recur (next vs))
-       (when (fn? done!) (done! ch))))))
+       (cond
+         (fn? done!)   (done! ch)
+         ;; stay compatible with `ca/onto-chan!`
+         (true? done!) (ca/close! ch))))))
 
 (defn onto-chan!!
-  "Like `ca/onto-chan!!` but the 3rd argument is expected
-   to be a fn which will be called with <ch> when <coll>
-   is exhausted (defaults to `ca/close`)."
+  "Drop-in replacement for `ca/onto-chan!!`, with the optional support
+   for the 3rd argument to be a function which will be called with <ch>
+   when <coll> is exhausted (defaults to `ca/close` which is effectively
+   the same as `true`).It is also nil-safe (see the `asynctopia.null` convention)."
   ([ch coll]
    (onto-chan!! ch coll ca/close!))
   ([ch coll done!]
@@ -56,7 +61,10 @@
      (loop [vs (seq coll)]
        (if (and vs (ca/>!! ch (null/replacing (first vs))))
          (recur (next vs))
-         (when (fn? done!) (done! ch)))))))
+         (cond
+           (fn? done!)   (done! ch)
+           ;; stay compatible with `ca/onto-chan!!`
+           (true? done!) (ca/close! ch)))))))
 
 (defn line-chan
   "Returns a channel that will receive all the lines
@@ -69,14 +77,13 @@
   ([src buf-or-n xform]
    (line-chan src buf-or-n xform nil))
   ([src buf-or-n xform ex-handler]
-   (let [out-chan (chan buf-or-n xform ex-handler)
-         ^BufferedReader rdr (io/reader src)]
-     (doto out-chan
+   (let [^BufferedReader rdr (io/reader src)]
+     (doto (chan buf-or-n xform ex-handler)
        (onto-chan!!
          (line-seq rdr)
          (fn [ch]
-           (.close rdr)
-           (ca/close! ch)))))))
+           (ca/close! ch)
+           (.close rdr))))))) ;; don't forget the Reader!
 
 (defn count-chan
   "Returns a channel that will (eventually) receive the
