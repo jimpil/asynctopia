@@ -90,21 +90,6 @@
      (onto-chan!!
        (clambda/stream-reducible src)))))
 
-#_(defn stream-chan!
-  "Returns a channel that will receive all the
-   elements in Stream <src> (via `onto-chan!`)
-   transformed per <xform>, and then close (also closing <src>)."
-  ([src]
-   (stream-chan! src nil))
-  ([src buf-or-n]
-   (stream-chan! src buf-or-n nil))
-  ([src buf-or-n xform]
-   (stream-chan! src buf-or-n xform nil))
-  ([^Stream src buf-or-n xform ex-handler]
-   (doto (chan buf-or-n xform ex-handler)
-     (onto-chan!
-       (clambda/stream-reducible src)))))
-
 ;; 3 variants of `line-chan` (LazySeq/Stream/Reducible based)
 (defn line-seq-chan
   "Returns a channel that will receive all the lines
