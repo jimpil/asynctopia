@@ -6,8 +6,12 @@
   [x]
   (if (nil? x) ::nil x))
 
+(defonce null? (partial = ::nil))
+
 (defn restoring
   "If <x> is ::nil returns nil, otherwise <x>.
    Useful when taking (potentially) nil-converted stuff from channels."
   [x]
-  (when (not= ::nil x) x))
+  (when-not (null? x) x))
+
+

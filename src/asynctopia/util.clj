@@ -1,12 +1,14 @@
 (ns asynctopia.util
   (:import (clojure.core.async.impl.channels ManyToManyChannel)
-           (java.util Collection)))
+           (java.util Collection)
+           (clojure.lang IReduceInit)))
 
 (defn println-error-handler
   [^Throwable t]
   (println "[ERROR]:" (.getMessage t)))
 
 (defonce throwable? (partial instance? Throwable))
+(defonce reducible? (partial instance? IReduceInit))
 (defonce chan?      (partial instance? ManyToManyChannel))
 
 (defonce unit->ms

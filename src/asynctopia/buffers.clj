@@ -1,6 +1,7 @@
 (ns asynctopia.buffers
   (:require [clojure.core.async.impl.protocols :as impl]
             [clojure.core.async.impl.dispatch :as dispatch]
+            [clojure.core.async :as ca]
             [asynctopia.protocols :as proto]
             [asynctopia.util :as ut])
   (:import (java.util ArrayDeque Deque)
@@ -265,3 +266,23 @@
    (if thread-safe?
      (channel-buffer* buf-or-n ts-fixed-buffer ts-dropping-buffer ts-sliding-buffer)
      (channel-buffer* buf-or-n fixed-buffer    dropping-buffer    sliding-buffer))))
+
+(defn chan*
+  "Drop-in replacement for `clojure.async.core/chan`, supporting
+   any `Deque` buffer (not just `LinkedList`). This can be achieved
+   either by pre-building the buffer via the `asynctopia.buffers` ns,
+   or by providing <buf-or-n> as a vector of three elements (`[variant n dq]`
+   where <variant> is one of :fixed/:dropping/:sliding),
+   and <dq> an instance of `java.util.Deque` (defaults to `ArrayDeque`)."
+  ([]
+   (chan* nil))
+  ([buf-or-n]
+   (chan* buf-or-n nil))
+  ([buf-or-n xform]
+   (chan* buf-or-n xform nil))
+  ([buf-or-n xform ex-handler]
+   (chan* buf-or-n xform ex-handler nil))
+  ([buf-or-n xform ex-handler thread-safe-buffer?]
+   (-> buf-or-n
+       (buf thread-safe-buffer?)
+       (ca/chan xform ex-handler))))

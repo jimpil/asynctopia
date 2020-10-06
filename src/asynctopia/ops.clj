@@ -1,7 +1,7 @@
 (ns asynctopia.ops
   (:require [clojure.core.async :as ca]
             [asynctopia
-             [channels :as channels]
+             [buffers :as buffers]
              [null :as null]
              [util :as ut]]))
 
@@ -12,7 +12,7 @@
   [f from & {:keys [error! buffer]
              :or {error! ut/println-error-handler
                   buffer 1024}}]
-  (->> (channels/chan buffer (map (comp null/replacing f)) error!)
+  (->> (buffers/chan* buffer (map (comp null/replacing f)) error!)
        (ca/pipe from))) ;; returns the `to` channel (2nd arg)
 
 (defn sink-with
@@ -60,6 +60,12 @@
    Must be called withing a `go` block."
   [ch x]
   `(ca/>! ~ch (null/replacing ~x)))
+
+(defmacro >!!?
+  "Nil-safe variant of `>!!`.
+   If <x> is nil, will put ::nil."
+  [ch x]
+  `(ca/>!! ~ch (null/replacing ~x)))
 
 (defn merge-reduce
   "If no <chans> are provided, essentially a wrapper to `ca/reduce`,

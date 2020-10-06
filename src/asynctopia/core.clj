@@ -32,11 +32,11 @@
 
 
 (defn pkeep
-  "Parallel `(keep f)` across <input> (collection or channel),
+  "Parallel `(keep f)` across <input> (collection, reducible or channel),
    handling errors with <error!>. <in-flight> controls parallelism
    (per `pipeline-blocking`).  <blocking-input?> controls how to turn
-   <coll> into an input channel (`to-chan!` VS `to-chan!!`), whereas `buffer`
-   controls how the output channel will be buffered (defaults to `(count coll)`).
+   <coll> into an input channel (`onto-chan!` VS `onto-chan!!`), whereas `buffer`
+   controls how the output channel will be buffered (defaults to 1024).
    Returns a channel containing the single (collection) result
    (i.e. take a single element from it). The aforementioned collection
    may actually be smaller than <coll> (per `keep` semantics)."
@@ -46,7 +46,12 @@
                    error! ut/println-error-handler}}]
   (let [channel-input? (ut/chan? input)
         to-chan* (if blocking-input? ca/to-chan!! ca/to-chan!)
-        in-chan  (if channel-input? input (to-chan* input))
+        in-chan  (if channel-input?
+                   input
+                   (if (ut/reducible? input)
+                     (doto (channels/chan 128)
+                       (channels/onto-chan!! input))
+                     (to-chan* input)))
         out-chan (channels/chan buffer)]
     (ca/pipeline-blocking in-flight
                           out-chan
@@ -74,8 +79,8 @@
    the total number of elements taken from <ch> (see `channels/count-chan`)."
   [ch & {:keys [buffer]
          :or {buffer 1024}}]
-  (let [multiple (ca/mult ch)
-        out-vs (channels/chan buffer)
+  (let [multiple  (ca/mult ch)
+        out-vs    (channels/chan buffer)
         out-count (channels/chan)]
     (ca/tap multiple out-vs)
     (ca/tap multiple out-count)

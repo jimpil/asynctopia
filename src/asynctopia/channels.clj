@@ -2,10 +2,11 @@
   (:require [clojure.core.async :as ca]
             [clojure.core.async.impl.buffers :as ca-buffers]
             [clojure.java.io :as io]
+            [clambda.core :as clambda]
             [asynctopia
              [protocols :as proto]
+             [ops :as ops]
              [buffers :as buffers]
-             [null :as null]
              [util :as ut]])
   (:import (clojure.core.async.impl.buffers FixedBuffer
                                             DroppingBuffer
@@ -13,65 +14,71 @@
                                             PromiseBuffer)
            (java.io BufferedReader)
            (java.util.stream Stream)
-           (java.nio.file Files Paths Path)))
+           (java.nio.file Files Path)))
 
-(defn chan
-  "Drop-in replacement for `clojure.async.core/chan`, supporting
-   any `Deque` buffer (not just `LinkedList`). This can be achieved
-   either by pre-building the buffer via the `asynctopia.buffers` ns,
-   or by providing <buf-or-n> as a vector of three elements (`[variant n dq]`
-   where <variant> is one of :fixed/:dropping/:sliding),
-   and <dq> an instance of `java.util.Deque` (defaults to `ArrayDeque`)."
-  ([]
-   (chan nil))
-  ([buf-or-n]
-   (chan buf-or-n nil))
-  ([buf-or-n xform]
-   (chan buf-or-n xform nil))
-  ([buf-or-n xform ex-handler]
-   (chan buf-or-n xform ex-handler nil))
-  ([buf-or-n xform ex-handler thread-safe-buffer?]
-   (-> buf-or-n
-       (buffers/buf thread-safe-buffer?)
-       (ca/chan xform ex-handler))))
+(def chan
+  "See `buffers/chan*`"
+  buffers/chan*)
 
-(defn onto-chan!
-  "Drop-in replacement for `ca/onto-chan!`, with a more flexible 3rd
-   argument - allowing for a function which will be called with <ch>
-   when <coll> is exhausted (defaults to `ca/close` which is effectively
-   the same as `true`). It is also nil-safe (see the `asynctopia.null` convention)."
-  ([ch coll]
-   (onto-chan! ch coll ca/close!))
-  ([ch coll done!]
-   (ca/go-loop [vs (seq coll)]
-     (if (and vs (ca/>! ch (null/replacing (first vs))))
-       (recur (next vs))
-       (cond
-         (fn? done!)   (done! ch)
-         ;; stay compatible with `ca/onto-chan!`
-         (true? done!) (ca/close! ch))))))
+(defn- done*
+  [ch done!]
+  (cond
+    ;; booleans work (backwards compatible)
+    (true? done!)
+    (ca/close! ch)
+    ;; functions work
+    (fn? done!)
+    (done! ch)))
 
 (defn onto-chan!!
   "Drop-in replacement for `ca/onto-chan!!`, with a more flexible 3rd
    argument - allowing for a function which will be called with <ch>
    when <coll> is exhausted (defaults to `ca/close` which is effectively
-   the same as `true`).It is also nil-safe (see the `asynctopia.null` convention)."
+   the same as `true`).It is also nil-safe (see the `asynctopia.null` convention),
+   and reducible-friendly (i.e. <coll> can be something implementing `IReduceInit`)."
   ([ch coll]
-   (onto-chan!! ch coll ca/close!))
+   (onto-chan!! ch coll true))
   ([ch coll done!]
-   (ca/thread
-     (loop [vs (seq coll)]
-       (if (and vs (ca/>!! ch (null/replacing (first vs))))
+   (if (ut/reducible? coll)
+     ;; something reducible
+     (ca/thread
+       (reduce
+         (fn [more? x]
+           (if more?
+             (ops/>!!? ch x)
+             (reduced false)))
+         true
+         coll)
+       (done* ch done!))
+     ;; regular Seq
+     (ca/thread
+       (loop [vs (seq coll)]
+         (if (and vs (ops/>!!? ch (first vs)))
+           (recur (next vs))
+           (done* ch done!)))))))
+
+(defn onto-chan!
+  "Drop-in replacement for `ca/onto-chan!`, with a more flexible 3rd
+   argument - allowing for a function which will be called with <ch>
+   when <coll> is exhausted (defaults to `ca/close` which is effectively
+   the same as `true`). It is also nil-safe (see the `asynctopia.null` convention),
+   and reducible-friendly (by falling back to `onto-chan!!`)."
+  ([ch coll]
+   (onto-chan! ch coll true))
+  ([ch coll done!]
+   (if (ut/reducible? coll)
+     ;; something reducible - cannot use `go` - degrade to `onto-chan!!`
+     (onto-chan!! ch coll done!)
+     ;; regular Seq
+     (ca/go-loop [vs (seq coll)]
+       (if (and vs (ops/>!? ch (first vs)))
          (recur (next vs))
-         (cond
-           (fn? done!)   (done! ch)
-           ;; stay compatible with `ca/onto-chan!!`
-           (true? done!) (ca/close! ch)))))))
+         (done* ch done!))))))
 
 (defn stream-chan!!
   "Returns a channel that will receive all the
    elements in Stream <src> (via `onto-chan!!`)
-   transformed per <xform>, and then close (also closing <src>)."
+   transformed per <xform>, and then close."
   ([src]
    (stream-chan!! src nil))
   ([src buf-or-n]
@@ -81,12 +88,9 @@
   ([^Stream src buf-or-n xform ex-handler]
    (doto (chan buf-or-n xform ex-handler)
      (onto-chan!!
-       (-> src .iterator iterator-seq)
-       (fn [ch]
-         (ca/close! ch)
-         (.close src))))))
+       (clambda/stream-reducible src)))))
 
-(defn stream-chan!
+#_(defn stream-chan!
   "Returns a channel that will receive all the
    elements in Stream <src> (via `onto-chan!`)
    transformed per <xform>, and then close (also closing <src>)."
@@ -99,11 +103,9 @@
   ([^Stream src buf-or-n xform ex-handler]
    (doto (chan buf-or-n xform ex-handler)
      (onto-chan!
-       (-> src .iterator iterator-seq)
-       (fn [ch]
-         (ca/close! ch)
-         (.close src))))))
+       (clambda/stream-reducible src)))))
 
+;; 3 variants of `line-chan` (LazySeq/Stream/Reducible based)
 (defn line-seq-chan
   "Returns a channel that will receive all the lines
    in <src> (via `line-seq`) transformed per <xform>,
@@ -118,7 +120,7 @@
    (let [^BufferedReader rdr (io/reader src)]
      (doto (chan buf-or-n xform ex-handler)
        (onto-chan!!
-         (line-seq rdr)
+         (line-seq rdr) ;; LazySeq based
          (fn [ch]
            (ca/close! ch)
            (.close rdr))))))) ;; don't forget the Reader!
@@ -126,8 +128,7 @@
 (defn line-stream-chan
   "Returns a channel that will receive all the lines
    in Path <src> (via `Files/lines`) transformed per <xform>,
-   and then close. Effectively the same as `line-seq-chan`,
-   potentially slightly faster as there is no laziness."
+   and then close. Functionally the same as `line-seq-chan`."
   ([src]
    (line-stream-chan src nil))
   ([src buf-or-n]
@@ -135,9 +136,23 @@
   ([src buf-or-n xform]
    (line-stream-chan src buf-or-n xform nil))
   ([^Path src buf-or-n xform ex-handler]
-   (-> src
-       Files/lines
+   (-> (Files/lines src)  ;; Stream based
        (stream-chan!! buf-or-n xform ex-handler))))
+
+(defn lines-reducible-chan
+  "Returns a channel that will receive all the lines
+   in <src> (per `io/reader`) transformed per <xform>,
+   and then close. Functionally the same as `line-seq-chan`."
+  ([src]
+   (lines-reducible-chan src nil))
+  ([src buf-or-n]
+   (lines-reducible-chan src buf-or-n nil))
+  ([src buf-or-n xform]
+   (lines-reducible-chan src buf-or-n xform nil))
+  ([src buf-or-n xform ex-handler]
+   (doto (chan buf-or-n xform ex-handler)
+     (onto-chan!!  ;; Reducible based
+       (clambda/lines-reducible (io/reader src))))))
 
 (defn count-chan
   "Returns a channel that will (eventually) receive the
@@ -151,9 +166,10 @@
 (comment
   ;; process the non-empty lines from <src> with <f> (one-by-one)
   ;; and report number of errors VS successes
-  (->> (line-seq-chan src 1024 (comp (remove empty?) (keep f)) identity)
+  (->> (lines-reducible-chan src 1024 (comp (remove empty?) (keep f)) identity)
        (ca/split ut/throwable?)
-       (map (comp ca/<!! count-chan)) ;; => (0 120000)
+       (map count-chan)
+       (map ca/<!!) ;; => (0 120000)
        )
 
   )
