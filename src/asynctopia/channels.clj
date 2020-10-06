@@ -12,7 +12,8 @@
                                             SlidingBuffer
                                             PromiseBuffer)
            (java.io BufferedReader)
-           (java.util.stream Stream)))
+           (java.util.stream Stream)
+           (java.nio.file Files Paths Path)))
 
 (defn chan
   "Drop-in replacement for `clojure.async.core/chan`, supporting
@@ -35,8 +36,8 @@
        (ca/chan xform ex-handler))))
 
 (defn onto-chan!
-  "Drop-in replacement for `ca/onto-chan!`, with the optional support
-   for the 3rd argument to be a function which will be called with <ch>
+  "Drop-in replacement for `ca/onto-chan!`, with a more flexible 3rd
+   argument - allowing for a function which will be called with <ch>
    when <coll> is exhausted (defaults to `ca/close` which is effectively
    the same as `true`). It is also nil-safe (see the `asynctopia.null` convention)."
   ([ch coll]
@@ -51,8 +52,8 @@
          (true? done!) (ca/close! ch))))))
 
 (defn onto-chan!!
-  "Drop-in replacement for `ca/onto-chan!!`, with the optional support
-   for the 3rd argument to be a function which will be called with <ch>
+  "Drop-in replacement for `ca/onto-chan!!`, with a more flexible 3rd
+   argument - allowing for a function which will be called with <ch>
    when <coll> is exhausted (defaults to `ca/close` which is effectively
    the same as `true`).It is also nil-safe (see the `asynctopia.null` convention)."
   ([ch coll]
@@ -66,25 +67,6 @@
            (fn? done!)   (done! ch)
            ;; stay compatible with `ca/onto-chan!!`
            (true? done!) (ca/close! ch)))))))
-
-(defn line-chan
-  "Returns a channel that will receive all the lines
-   in <src> (via `line-seq`) transformed per <xform>,
-   and then close (also closing the underlying Reader)."
-  ([src]
-   (line-chan src nil))
-  ([src buf-or-n]
-   (line-chan src buf-or-n nil))
-  ([src buf-or-n xform]
-   (line-chan src buf-or-n xform nil))
-  ([src buf-or-n xform ex-handler]
-   (let [^BufferedReader rdr (io/reader src)]
-     (doto (chan buf-or-n xform ex-handler)
-       (onto-chan!!
-         (line-seq rdr)
-         (fn [ch]
-           (ca/close! ch)
-           (.close rdr))))))) ;; don't forget the Reader!
 
 (defn stream-chan!!
   "Returns a channel that will receive all the
@@ -122,6 +104,41 @@
          (ca/close! ch)
          (.close src))))))
 
+(defn line-seq-chan
+  "Returns a channel that will receive all the lines
+   in <src> (via `line-seq`) transformed per <xform>,
+   and then close."
+  ([src]
+   (line-seq-chan src nil))
+  ([src buf-or-n]
+   (line-seq-chan src buf-or-n nil))
+  ([src buf-or-n xform]
+   (line-seq-chan src buf-or-n xform nil))
+  ([src buf-or-n xform ex-handler]
+   (let [^BufferedReader rdr (io/reader src)]
+     (doto (chan buf-or-n xform ex-handler)
+       (onto-chan!!
+         (line-seq rdr)
+         (fn [ch]
+           (ca/close! ch)
+           (.close rdr))))))) ;; don't forget the Reader!
+
+(defn line-stream-chan
+  "Returns a channel that will receive all the lines
+   in Path <src> (via `Files/lines`) transformed per <xform>,
+   and then close. Effectively the same as `line-seq-chan`,
+   potentially slightly faster as there is no laziness."
+  ([src]
+   (line-stream-chan src nil))
+  ([src buf-or-n]
+   (line-stream-chan src buf-or-n nil))
+  ([src buf-or-n xform]
+   (line-stream-chan src buf-or-n xform nil))
+  ([^Path src buf-or-n xform ex-handler]
+   (-> src
+       Files/lines
+       (stream-chan!! buf-or-n xform ex-handler))))
+
 (defn count-chan
   "Returns a channel that will (eventually) receive the
    total number of elements taken from <ch>."
@@ -134,7 +151,7 @@
 (comment
   ;; process the non-empty lines from <src> with <f> (one-by-one)
   ;; and report number of errors VS successes
-  (->> (line-chan src 1024 (comp (remove empty?) (keep f)) identity)
+  (->> (line-seq-chan src 1024 (comp (remove empty?) (keep f)) identity)
        (ca/split ut/throwable?)
        (map (comp ca/<!! count-chan)) ;; => (0 120000)
        )
