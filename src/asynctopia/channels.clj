@@ -75,16 +75,16 @@
          (recur (next vs))
          (done-with* done! ch))))))
 
-(defn stream-chan!!
+(defn stream-chan
   "Returns a channel that will receive all the
    elements in Stream <src> (via `onto-chan!!`)
    transformed per <xform>, and then close."
   ([src]
-   (stream-chan!! src nil))
+   (stream-chan src nil))
   ([src buf-or-n]
-   (stream-chan!! src buf-or-n nil))
+   (stream-chan src buf-or-n nil))
   ([src buf-or-n xform]
-   (stream-chan!! src buf-or-n xform nil))
+   (stream-chan src buf-or-n xform nil))
   ([^Stream src buf-or-n xform ex-handler]
    (doto (chan buf-or-n xform ex-handler)
      (onto-chan!!
@@ -122,7 +122,7 @@
    (line-stream-chan src buf-or-n xform nil))
   ([^Path src buf-or-n xform ex-handler]
    (-> (Files/lines src)  ;; Stream based
-       (stream-chan!! buf-or-n xform ex-handler))))
+       (stream-chan buf-or-n xform ex-handler))))
 
 (defn lines-reducible-chan
   "Returns a channel that will receive all the lines
