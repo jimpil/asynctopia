@@ -8,13 +8,18 @@
     (let [data   (range 1000)
           errors (atom [])
           vs     (atom [])
-          data-in (ca/to-chan! (interleave data (repeat :foo)))]
+          end    (promise)
+          data-in (ca/to-chan!
+                    (concat (interleave data (repeat :foo))
+                            [::end]))]
       (consuming-with
         (fn [x]
-          (swap! vs conj (inc x)))
+          (if (= ::end x)
+            (deliver end true)
+            (swap! vs conj (inc x))))
         data-in
         :error! (partial swap! errors conj))
-      (Thread/sleep 2000)
+      @end
       (is (= (map inc data) @vs))
       ;; can't increment a keyword
       (is (every? (partial instance? ClassCastException) @errors)))))
@@ -73,6 +78,13 @@
     (is (= :done (ca/<!! (with-timeout 600 :timeout (Thread/sleep 500) :done))))
     (is (= :timeout (ca/<!! (with-timeout 400 :timeout (Thread/sleep 500) :done))))
     (is (nil? (ca/<!! (with-timeout 600 :timeout (Thread/sleep 500)))))
-    )
+    ))
 
+(deftest with-counting-tests
+  (testing "with-counting"
+    (let [data (range 1000)
+          [vchan cchan] (with-counting (ca/to-chan! data))]
+      (is (= data (ca/<!! (ca/into [] vchan))))
+      (is (= 1000 (ca/<!! cchan))))
+    )
   )

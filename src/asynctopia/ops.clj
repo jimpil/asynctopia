@@ -32,7 +32,8 @@
 
 (def drain
   "Fully consumes a channel disregarding its contents.
-   Useful against a piped `to` channel that uses a transducer."
+   Useful against a piped `to` channel that uses a
+   transducer (see `core/consuming-with`)."
   (partial sink-with identity))
 
 (defn mix-with

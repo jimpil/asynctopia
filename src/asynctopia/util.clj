@@ -1,11 +1,14 @@
 (ns asynctopia.util
   (:import (clojure.core.async.impl.channels ManyToManyChannel)
            (java.util Collection)
-           (clojure.lang IReduceInit)))
+           (clojure.lang IReduceInit)
+           (java.time ZonedDateTime)))
 
 (defn println-error-handler
   [^Throwable t]
-  (println "[ERROR]:" (.getMessage t)))
+  (println (str (ZonedDateTime/now)) \tab
+           (.getName (Thread/currentThread)) \tab
+           "[ERROR] -" (.getMessage t)))
 
 (defonce throwable? (partial instance? Throwable))
 (defonce reducible? (partial instance? IReduceInit))
