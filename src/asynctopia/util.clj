@@ -1,4 +1,5 @@
 (ns asynctopia.util
+  (:require [clojure.core.async :as ca])
   (:import (clojure.core.async.impl.channels ManyToManyChannel)
            (java.util Collection)
            (clojure.lang IReduceInit)

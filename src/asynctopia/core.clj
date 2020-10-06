@@ -86,17 +86,14 @@
            (null/restoring x#))))))
 
 (defn with-counting
-  "Returns a vector of two channels. The first (buffered per <buffer>)
-   will receive items per <ch>, whereas the second will (eventually) receive
-   the total number of elements taken from <ch> (see `channels/count-chan`)."
-  [ch & {:keys [buffer]
-         :or {buffer 1024}}]
-  (let [multiple  (ca/mult ch)
-        out-vs    (channels/chan buffer)
-        out-count (channels/chan)]
-    (ca/tap multiple out-vs)
-    (ca/tap multiple out-count)
-    [out-vs (channels/count-chan out-count)]))
+  "Returns a vector of two channels. The first will receive items per <ch>,
+   whereas the second will (eventually) receive the total number of elements
+   passed through (see `channels/count-chan`)."
+  [ch]
+  (let [multiple (ca/mult ch)]
+    [(ca/tap multiple (channels/chan))
+     (-> (ca/tap multiple (channels/chan))
+         channels/count-chan)]))
 
 (defn merge-reduce
   "If no <chans> are provided, essentially a wrapper to `ca/reduce`,
