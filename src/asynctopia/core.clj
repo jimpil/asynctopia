@@ -47,7 +47,7 @@
   "Parallel `(keep f)` across <input> (collection, reducible or channel),
    handling errors with <error!>. <in-flight> controls parallelism
    (per `pipeline-blocking`).  <blocking-input?> controls how to turn
-   <coll> into an input channel (`onto-chan!` VS `onto-chan!!`), whereas `buffer`
+   <coll> into an input channel (`to-chan!` VS `to-chan!!`), whereas `buffer`
    controls how the output channel will be buffered (defaults to 1024).
    Returns a channel containing the single (collection) result
    (i.e. take a single element from it). The aforementioned collection
