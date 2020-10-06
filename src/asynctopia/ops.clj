@@ -36,19 +36,6 @@
    transducer (see `core/consuming-with`)."
   (partial sink-with identity))
 
-(defn mix-with
-  "Creates a `mix` against <out-chan>, adds all <in-chans> to it,
-   and starts sinking <out-chan> with <f>. You need to close
-   <out-chan> in order to stop the mixing/sinking loops (closing
-   <in-chans> or unmixing-all won't suffice). Returns the `mix` object."
-  ([f out-chan in-chans]
-   (mix-with f out-chan in-chans ut/println-error-handler))
-  ([f out-chan in-chans error!]
-   (let [mixer (ca/mix out-chan)]
-     (doseq [in in-chans] (ca/admix mixer in))
-     (sink-with f out-chan error!)
-     mixer)))
-
 (defmacro <!?deliver
   "Takes from channel <ch> and delivers the value to promise <p>.
    If the value is ::nil delivers nil."
@@ -68,11 +55,3 @@
   [ch x]
   `(ca/>!! ~ch (null/replacing ~x)))
 
-(defn merge-reduce
-  "If no <chans> are provided, essentially a wrapper to `ca/reduce`,
-   otherwise merges all <chans> and reduces them with <f>, <init>."
-  [f init chan & chans]
-  (->> (if (seq chans)
-         (ca/merge (cons chan chans))
-         chan)
-       (ca/reduce (comp f null/restoring) init)))
