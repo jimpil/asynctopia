@@ -20,8 +20,8 @@
   "See `buffers/chan*`"
   buffers/chan*)
 
-(defn- done*
-  [ch done!]
+(defn- done-with*
+  [done! ch]
   (cond
     ;; booleans work (backwards compatible)
     (true? done!)
@@ -49,13 +49,13 @@
              (reduced false)))
          true
          coll)
-       (done* ch done!))
+       (done-with* done! ch))
      ;; regular Seq
      (ca/thread
        (loop [vs (seq coll)]
          (if (and vs (ops/>!!? ch (first vs)))
            (recur (next vs))
-           (done* ch done!)))))))
+           (done-with* done! ch)))))))
 
 (defn onto-chan!
   "Drop-in replacement for `ca/onto-chan!`, with a more flexible 3rd
@@ -73,7 +73,7 @@
      (ca/go-loop [vs (seq coll)]
        (if (and vs (ops/>!? ch (first vs)))
          (recur (next vs))
-         (done* ch done!))))))
+         (done-with* done! ch))))))
 
 (defn stream-chan!!
   "Returns a channel that will receive all the
