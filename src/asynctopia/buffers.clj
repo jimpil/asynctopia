@@ -252,9 +252,9 @@
     (let [[semantics n dq react!] buf-or-n
           n (or n 1024)]
       (case semantics
-        :fixed    (fixed dq n)
-        :dropping (dropping dq n react!)
-        :sliding  (sliding dq n react!)))
+        (:fixed :buffer/fixed)       (fixed dq n)
+        (:dropping :buffer/dropping) (dropping dq n react!)
+        (:sliding :buffer/sliding)   (sliding dq n react!)))
     ;; assuming some instance from this namespace (or nil)
     :else buf-or-n))
 

@@ -2,9 +2,50 @@
   (:require [clojure.core.async :as ca]
             [asynctopia
              [core :as c]
-             [protocols :as proto]
              [channels :as channels]
              [util :as ut]]))
+;; a `pub` is a go block pulling from one channel and feeding it in to
+;; a `mult` (one per sub'ed topic), and a `mult` is a go block pulling
+;; from one channel and writing to multiple channels.
+
+(defn pub
+  "Lile `ca/pub`, but creates mult-channels via `channels/chan`."
+  ([ch topic-fn] (pub ch topic-fn (constantly nil)))
+  ([ch topic-fn buf-fn]
+   (let [mults (atom {}) ;;topic->mult
+         ensure-mult
+         (fn [topic]
+           (or (get @mults topic)
+               (get (swap! mults
+                           #(if (% topic)
+                              % ;; below is the (only) change
+                              (assoc % topic (ca/mult (channels/chan (buf-fn topic))))))
+                    topic)))
+         p (reify
+             ca/Mux
+             (muxch* [_] ch)
+             ca/Pub
+             (sub* [p topic ch close?]
+               (let [m (ensure-mult topic)]
+                 (ca/tap m ch close?)))
+             (unsub* [p topic ch]
+               (when-let [m (get @mults topic)]
+                 (ca/untap m ch)))
+             (unsub-all* [_] (reset! mults {}))
+             (unsub-all* [_ topic] (swap! mults dissoc topic)))]
+     (ca/go-loop []
+       (let [val (ca/<! ch)]
+         (if (nil? val)
+           (doseq [m (vals @mults)]
+             (ca/close! (ca/muxch* m)))
+           (let [topic (topic-fn val)
+                 m (get @mults topic)]
+             (when m
+               (when-not (ca/>! (ca/muxch* m) val)
+                 (swap! mults dissoc topic)))
+             (recur)))))
+     p)))
+
 
 (defn pub-sub!
   "Configuration-driven (<topics>) `pub-sub` infrastructure.
@@ -28,34 +69,47 @@
   (let [topic->processor (if (sequential? topics)
                            (let [[topics processor] topics]
                              (->> topics
-                                  (map
-                                    (fn [topic]
-                                      (partial processor topic)))
+                                  (map #(partial processor %))
                                   (zipmap topics)))
                            topics)
+        topic-keys (keys topic->processor)
         topic->buffer (or topic->buffer
-                          (zipmap (keys topic->processor)
-                                  (repeat 1024))) ;; default buffer
-        sub-chans (repeatedly (count topic->processor) channels/chan)
-        pb (ca/pub in topic-fn topic->buffer)] ;; create the publication
+                          (zipmap topic-keys (repeat 1024))) ;; default buffer
+        pb (pub in topic-fn topic->buffer) ;; create the publication
+        sub-chans (map
+                    (fn [[topic process-topic]]
+                      (let [nconsumers (get topic->nconsumers topic 1) ;; default to single consumer
+                            topic-buffer (topic->buffer topic)
+                            [sub-buffer per-consumer]
+                            (cond
+                              (number? topic-buffer)
+                              [topic-buffer (/ topic-buffer nconsumers)]
 
-    (dorun
-      (map
-        (fn [[topic process-topic] c]
-          (ca/sub pb topic c) ;; topic subscription
-          (dotimes [_ (get topic->nconsumers topic 1)] ;; default to single consumer
-            (c/consuming-with ;; topic consumption
-              process-topic
-              c
-              :buffer (let [b (get topic->buffer topic)]
-                        (if (number? b) b (proto/clone-empty b)))
-              :error? error?
-              :error! error!
-              :to-error to-error)))
-        topic->processor
-        sub-chans))
+                              (sequential? topic->buffer) ;; [:dropping/:sliding N]
+                              [topic-buffer (/ (second topic->buffer) nconsumers)]
+                              ;; effectively 1 when topic-buffers are passed prebuilt
+                              :else [nconsumers 1])
 
-    [pb sub-chans]))
+                            sub-chan (channels/chan sub-buffer)]
+                        (ca/sub pb topic sub-chan) ;; subscribe
+                        (dotimes [_ nconsumers]
+                          (c/consuming-with ;; consume
+                            process-topic
+                            sub-chan
+                            :buffer per-consumer
+                            :error? error?
+                            :error! error!
+                            :to-error to-error))
+                        sub-chan))
+                    topic->processor)]
+    [pb in (doall sub-chans)]))
+
+(defn close-pub!
+  "Unsubscribes everything from <pb> (a publication),
+   after closing <pb-in-chan> (its input channel)."
+  [pb pb-in-chan & _]
+  (ca/close! pb-in-chan)
+  (ca/unsub-all pb))
 
 
 (comment

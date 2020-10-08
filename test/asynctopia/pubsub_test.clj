@@ -14,14 +14,12 @@
                             (case topic
                               (:t1 :t2 :t3 :t4 :t5)
                               (swap! results conj message)))
-          input (ca/to-chan!
-                  (repeatedly 2000 (fn []
-                                     {:topic (rand-nth topics)
-                                      :message (rand-nth messages)})))
 
-          [pb sub-chans] (pub-sub! input
-                                   topic-fn
-                                   [topics topic-processor])]
+          [pb in-chan sub-chans] (-> (ca/to-chan!
+                                       (repeatedly 2000 (fn []
+                                                          {:topic (rand-nth topics)
+                                                           :message (rand-nth messages)})))
+                                     (pub-sub! topic-fn [topics topic-processor]))]
       (Thread/sleep 2000)
       (is (>= 2000 (count @results)))
       )
