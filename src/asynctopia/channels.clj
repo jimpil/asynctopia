@@ -1,18 +1,12 @@
 (ns asynctopia.channels
   (:require [clojure.core.async :as ca]
-            [clojure.core.async.impl.buffers :as ca-buffers]
             [clojure.java.io :as io]
             [clambda.core :as clambda]
             [asynctopia
-             [protocols :as proto]
              [ops :as ops]
              [buffers :as buffers]
              [util :as ut]])
-  (:import (clojure.core.async.impl.buffers FixedBuffer
-                                            DroppingBuffer
-                                            SlidingBuffer
-                                            PromiseBuffer)
-           (java.io BufferedReader)
+  (:import (java.io BufferedReader)
            (java.util.stream Stream)
            (java.nio.file Files Path)))
 
@@ -268,21 +262,7 @@
    ((chan-throttler rate unit bucket-size) c)))
 
 
-(extend-protocol proto/IEmpty
-  FixedBuffer
-  (clone-empty [b]  (ca/buffer (.n b)))
-  DroppingBuffer
-  (clone-empty [b] (ca/dropping-buffer (.n b)))
-  SlidingBuffer
-  (clone-empty [b] (ca/sliding-buffer (.n b)))
-  PromiseBuffer
-  (clone-empty [_] (ca-buffers/promise-buffer))
-  )
 
-(defn empty-buffer
-  "Returns a new/empty buffer of the same type and (buffering) capacity
-   as the provided channel's buffer."
-  [ch]
-  (proto/clone-empty (ut/get-channel-buffer ch)))
+
 
 

@@ -1,6 +1,7 @@
 (ns asynctopia.core
   (:require [clojure.core.async :as ca]
             [asynctopia
+             [protocols :as proto]
              [ops :as ops]
              [util :as ut]
              [channels :as channels]
@@ -141,3 +142,14 @@
             (recur new-futs-and-cs)
             (ca/<!! (second (first new-futs-and-cs)))))))))
 
+(defn snapshot-buffer
+  "Returns the (current) contents of this
+   channel's (presumably thread-safe) buffer."
+  [ch]
+  (proto/snapshot ch))
+
+(defn empty-buffer
+  "Returns a new/empty buffer of the same type,
+   and (buffering) capacity as this channel's buffer."
+  [ch]
+  (proto/clone-empty ch))

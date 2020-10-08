@@ -237,10 +237,6 @@
      n
      slided!)))
 
-(defn snapshot-buffer
-  "Returns the (current) contents of this channel's (thread-safe) buffer."
-  [ch]
-  (proto/snapshot (ut/get-channel-buffer ch)))
 ;;===========================================================================
 (defn- channel-buffer*
   [buf-or-n fixed dropping sliding]

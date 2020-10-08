@@ -1,5 +1,4 @@
 (ns asynctopia.util
-  (:require [clojure.core.async :as ca])
   (:import (clojure.core.async.impl.channels ManyToManyChannel)
            (java.util Collection)
            (clojure.lang IReduceInit)
@@ -24,11 +23,6 @@
    :day 86400000
    :month 2678400000})
 
-(defn get-channel-buffer
-  "Returns the underlying buffer of channel <ch>."
-  [^ManyToManyChannel ch]
-  (.buf ch))
-
 (defn snapshot-java-collection
   [^Collection coll]
-  (vec (.toArray coll)))
+  (seq (.toArray coll)))
