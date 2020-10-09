@@ -9,10 +9,15 @@
   "Pipes the <from> channel into a newly created output-channel,
    returning the latter. Errors thrown by <f> are handled with `error!`
    (defaults to simply printing the error message)."
-  [f from & {:keys [error! buffer]
+  [f from & {:keys [error! to-error buffer]
              :or {error! ut/println-error-handler
+                  to-error identity
                   buffer 1024}}]
-  (->> (buffers/chan* buffer (map (comp null/replacing f)) error!)
+  (->> (buffers/chan* buffer
+                      (comp (map f)
+                            (map to-error)
+                            (map null/replacing))
+                      error!)
        (ca/pipe from))) ;; returns the `to` channel (2nd arg)
 
 (defn sink-with

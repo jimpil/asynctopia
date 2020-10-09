@@ -46,6 +46,11 @@
              (recur)))))
      p)))
 
+(defn- topic-fn*
+  [topic multif f]
+  (or (some-> multif (partial topic))
+      f))
+
 
 (defn pub-sub!
   "Configuration-driven (<topics>) `pub-sub` infrastructure.
@@ -61,47 +66,62 @@
    Returns a vector of 2 elements - the publication, and the subscription channels.
    This can form the basis of a simple (in-process) event-bus (events arrive in <in>,
    and distributed to their respective topic processors)."
-  [in topic-fn topics & {:keys [error? error! to-error topic->buffer topic->nconsumers]
-                         :or   {error?            ut/throwable?
-                                error!            ut/println-error-handler
-                                to-error          identity
-                                topic->nconsumers {}}}]
-  (let [topic->processor (if (sequential? topics)
-                           (let [[topics processor] topics]
-                             (->> topics
-                                  (map #(partial processor %))
-                                  (zipmap topics)))
-                           topics)
-        topic-keys (keys topic->processor)
-        topic->buffer (or topic->buffer
-                          (zipmap topic-keys (repeat 1024))) ;; default buffer
+  [in {:keys [topic-fn ;; required
+              payload-fn
+              topics   ;; determines if the below are required/useful
+              multi-process!
+              multi-error?
+              multi-error!
+              multi-to-error
+              multi-buffer
+              multi-nconsumers]
+       :or {payload-fn identity}
+       :as global-config}]
+  (assert (some? topic-fn))
+  (let [[topic-config topic->buffer]
+        (if topics
+          ;; dealing with multi-methods - create empty maps
+          [(zipmap topics (repeat {}))
+           (or multi-buffer (zipmap topics (repeat 1024)))]
+          ;; dealing with explicit topic keys
+          (let [cfg (dissoc global-config :topic-fn)]
+            [cfg (->> (vals cfg)
+                      (map #(:buffer % 1024))
+                      (zipmap (keys cfg)))]))
+        ;_ (println topic-config)
         pb (pub in topic-fn topic->buffer) ;; create the publication
         sub-chans (map
-                    (fn [[topic process-topic]]
-                      (let [nconsumers (get topic->nconsumers topic 1) ;; default to single consumer
-                            topic-buffer (topic->buffer topic)
+                    (fn [[topic {:keys [process! error? error! to-error nconsumers]}]]
+                      (let [topic-processor (topic-fn* topic multi-process! process!)
+                            topic-error?    (topic-fn* topic multi-error? error?)
+                            topic-error!    (topic-fn* topic multi-error! error!)
+                            topic-to-error  (topic-fn* topic multi-to-error to-error)
+                            topic-buffer    (topic->buffer topic)
+                            nconsumers (if (fn? multi-nconsumers)
+                                         (multi-nconsumers topic)
+                                         (or nconsumers 1))
                             [sub-buffer per-consumer]
                             (cond
                               (number? topic-buffer)
                               [topic-buffer (/ topic-buffer nconsumers)]
 
-                              (sequential? topic->buffer) ;; [:dropping/:sliding N]
-                              [topic-buffer (/ (second topic->buffer) nconsumers)]
-                              ;; effectively 1 when topic-buffers are passed prebuilt
-                              :else [nconsumers 1])
+                              (sequential? topic-buffer) ;; [:dropping/:sliding N]
+                              [topic-buffer (/ (second topic-buffer) nconsumers)]
 
-                            sub-chan (channels/chan sub-buffer)]
+                              :else [topic-buffer (/ (.n topic-buffer) nconsumers)])
+
+                            sub-chan (channels/chan sub-buffer (map payload-fn))]
                         (ca/sub pb topic sub-chan) ;; subscribe
                         (dotimes [_ nconsumers]
                           (c/consuming-with ;; consume
-                            process-topic
+                            topic-processor
                             sub-chan
                             :buffer per-consumer
-                            :error? error?
-                            :error! error!
-                            :to-error to-error))
+                            :error? (or topic-error? ut/throwable?)
+                            :error! (or topic-error! ut/println-error-handler)
+                            :to-error (or topic-to-error identity)))
                         sub-chan))
-                    topic->processor)]
+                    topic-config)]
     [pb in (doall sub-chans)]))
 
 (defn close-pub!
@@ -111,8 +131,36 @@
   (ca/close! pb-in-chan)
   (ca/unsub-all pb))
 
+;; TODO add config specs
 
 (comment
+  ;; sample config
+  {:topic-fn :topic ;; MUST exist
+   :message-fn :message
+
+   ;; layout #1
+   :topics [:fiserv :chase]
+   :multi-process! (fn [topic msg] )   ;; dispatch on :topic
+   :multi-error?   (fn [topic msg] )   ;; dispatch on :topic
+   :multi-error!   (fn [topic error] ) ;; dispatch on :topic
+   :multi-to-error (fn [topic msg] )   ;; dispatch on :topic
+   :multi-nconsumers (fn [topic] )
+   :multi-buffer   {:fiserv 512 :chase 128}
+
+   ;; layout #2
+   :fiserv {:process! (fn [msg] ...)
+            :buffer 512
+            :nconsumers 2
+            :error? ut/throwable?
+            :error! ut/println-error-handler
+            :to-error identity
+            }
+   :chase {:process! (fn [msg] ...)
+           :buffer 128
+           :nconsumers 3}
+
+   }
+
   (defn gen-val! [t]
     {:topic t
      :foo (rand-int 2000)})

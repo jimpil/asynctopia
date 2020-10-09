@@ -16,14 +16,12 @@
    Both `go` loops gracefully terminate when <from> is closed."
   [consume! from & {:keys [error? error! to-error buffer]
                     :or {error? ut/throwable?
-                         error! ut/println-error-handler
                          to-error identity
                          buffer 1024}}]
-
   (let [[errors-chan values-chan]
-        (->> (ops/pipe-with consume!
-                            from
-                            :error! to-error
+        (->> (ops/pipe-with consume! from
+                            :to-error to-error
+                            :error! error!
                             :buffer buffer)
              (ca/split error?))]
     ;; main consuming loop
