@@ -1,5 +1,6 @@
 (ns asynctopia.protocols
   (:require [clojure.core.async :as ca]
+            [asynctopia.util :as ut]
             [clojure.core.async.impl.buffers :as ca-buffers])
   (:import (clojure.core.async.impl.buffers FixedBuffer
                                             DroppingBuffer
@@ -26,4 +27,20 @@
   PromiseBuffer
   (clone-empty [_]
     (ca-buffers/promise-buffer))
+  )
+
+(extend-protocol ISnapshot
+  ;; NOT thread-safe buffers - be extra careful!
+  FixedBuffer
+  (snapshot [b]
+    (ut/snapshot-java-collection (.buf b)))
+  DroppingBuffer
+  (snapshot [b]
+    (ut/snapshot-java-collection (.buf b)))
+  SlidingBuffer
+  (snapshot [b]
+    (ut/snapshot-java-collection (.buf b)))
+  PromiseBuffer
+  (snapshot [b]
+    [(.val b)])
   )

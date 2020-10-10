@@ -1,6 +1,5 @@
 (ns asynctopia.util
   (:import (clojure.core.async.impl.channels ManyToManyChannel)
-           (java.util Collection)
            (clojure.lang IReduceInit)
            (java.time ZonedDateTime)))
 
@@ -24,5 +23,5 @@
    :month 2678400000})
 
 (defn snapshot-java-collection
-  [^Collection coll]
-  (seq (.toArray coll)))
+  [coll]
+  (seq (to-array coll)))

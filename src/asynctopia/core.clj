@@ -21,23 +21,21 @@
   [b]
   (proto/clone-empty b))
 
-(defn clone-channel
-  "Clones the buffer from <c> (per `clone-buffer`),
-   and constructs a channel with it (`xform`/`ex-handler` CANNOT be cloned)."
-  [ch]
-  (-> ch channel-buffer clone-buffer channels/chan))
-
 (defn snapshot-buffer
   "Returns a seq with the (current) contents of buffer <b>.
    Available only to thread-safe buffers (see `asynctopia.buffers`)."
   [b]
   (proto/snapshot b))
 
-(defn snapshot-channel
+(def clone-channel
+  "Clones the buffer from <c> (per `clone-buffer`),
+   and constructs a channel with it (`xform`/`ex-handler` CANNOT be cloned)."
+  (comp channels/chan clone-buffer channel-buffer))
+
+(def snapshot-channel
   "Returns a seq with the (current) contents of
    this channel's buffer (per `snapshot-buffer`)."
-  [ch]
-  (-> ch channel-buffer snapshot-buffer))
+  (comp snapshot-buffer channel-buffer))
 
 (defn consuming-with
   "Sets up two `go` loops for consuming values VS errors

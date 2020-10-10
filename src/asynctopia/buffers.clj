@@ -32,6 +32,10 @@
   proto/IEmpty
   (clone-empty [this]
     (fixed-buffer n))
+
+  proto/ISnapshot
+  (snapshot [this] ;; NOT thread-safe!
+    (ut/snapshot-java-collection buf))
   )
 
 
@@ -66,6 +70,10 @@
   proto/IEmpty
   (clone-empty [this]
     (dropping-buffer n))
+
+  proto/ISnapshot
+  (snapshot [this] ;; NOT thread-safe!
+    (ut/snapshot-java-collection buf))
   )
 
 (defn dropping-buffer
@@ -102,6 +110,10 @@
   proto/IEmpty
   (clone-empty [this]
     (sliding-buffer n))
+
+  proto/ISnapshot
+  (snapshot [this] ;; NOT thread-safe!
+    (ut/snapshot-java-collection buf))
   )
 
 (defn sliding-buffer

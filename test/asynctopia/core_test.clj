@@ -1,7 +1,9 @@
 (ns asynctopia.core-test
   (:require [clojure.test :refer :all]
             [asynctopia.core :refer :all]
-            [clojure.core.async :as ca]))
+            [clojure.core.async :as ca]
+            [asynctopia.channels :as channels])
+  (:import (asynctopia.buffers FixedBuffer DroppingBuffer SlidingBuffer)))
 
 (deftest producer-consumer
   (testing "producer-consumer"
@@ -86,5 +88,45 @@
           [vchan cchan] (with-counting (ca/to-chan! data))]
       (is (= data (ca/<!! (ca/into [] vchan))))
       (is (= 1000 (ca/<!! cchan))))
+    )
+  )
+
+(deftest protocol-tests
+  (testing "clone-buffer"
+    (let [fixed-chan    (channels/chan 10)
+          dropping-chan (channels/chan [:buffer/dropping 10])
+          sliding-chan  (channels/chan [:buffer/sliding 10])]
+      (is (instance? FixedBuffer    (channel-buffer (clone-channel fixed-chan))))
+      (is (instance? DroppingBuffer (channel-buffer (clone-channel dropping-chan))))
+      (is (instance? SlidingBuffer  (channel-buffer (clone-channel sliding-chan))))
+      ;; testing protocol extensions
+      (is (instance? clojure.core.async.impl.buffers.FixedBuffer
+                     (channel-buffer (clone-channel (ca/chan 10)))))
+      ))
+
+  (testing "snapshot-buffer"
+    (testing "sliding buffer"
+      (let [sliding-chan  (channels/chan [:buffer/sliding 3])]
+        ;; put 0,1,2
+        (dotimes [i 3] (ca/>!! sliding-chan i))
+        ;; put 3=>23 with interleaved assertions
+        (doseq [i (range 3 23)]
+          (is (= (range (- i 3) i)
+                 (reverse (snapshot-channel sliding-chan))))
+          (ca/>!! sliding-chan i))
+
+        (ca/close! sliding-chan)))
+
+    (testing "dropping buffer"
+      (let [dropping-chan  (channels/chan [:buffer/dropping 3])]
+        ;; put 0,1,2
+        (dotimes [i 3] (ca/>!! dropping-chan i))
+        ;; put 3=>23 with interleaved assertions (all dropped)
+        (doseq [i (range 3 23)]
+          (is (= (range 3)
+                 (reverse (snapshot-channel dropping-chan))))
+          (ca/>!! dropping-chan i))
+
+        (ca/close! dropping-chan)))
     )
   )
