@@ -4,7 +4,8 @@
              [core :as c]
              [channels :as channels]
              [util :as ut]]
-            [asynctopia.null :as null]))
+            [asynctopia.null :as null]
+            [asynctopia.protocols :as proto]))
 ;; a `pub` is a go block pulling from one channel and feeding it in to
 ;; a `mult` (one per sub'ed topic), and a `mult` is a go block pulling
 ;; from one channel and writing to multiple channels.
@@ -131,15 +132,16 @@
                             nconsumers (if (fn? multi-nconsumers)
                                          (multi-nconsumers topic)
                                          (or nconsumers 1))
-                            [sub-buffer per-consumer]
-                            [topic-buffer (cond
-                                            (number? topic-buffer)
-                                            (/ topic-buffer nconsumers)
-                                            (sequential? topic-buffer)  ;; [:dropping/:sliding N]
-                                            (/ (second topic-buffer) nconsumers)
-                                            :else ;; assuming prebuilt buffer instance (extract its capacity)
-                                            (/ (.n topic-buffer) nconsumers))]
-                            sub-chan (channels/chan sub-buffer
+                            [sub-buf per-consumer] (cond
+                                                     (number? topic-buffer)
+                                                     [topic-buffer (/ topic-buffer nconsumers)]
+
+                                                     (sequential? topic-buffer)  ;; [:dropping/:sliding N]
+                                                     [topic-buffer (/ (second topic-buffer) nconsumers)]
+
+                                                     :else [(proto/clone-empty topic-buffer)
+                                                            (/ (.n topic-buffer) nconsumers)])
+                            sub-chan (channels/chan sub-buf
                                                     (comp (map payload-fn)
                                                           (map null/replacing)))]
                         (ca/sub pb topic sub-chan) ;; subscribe
