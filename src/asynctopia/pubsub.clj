@@ -2,7 +2,6 @@
   (:require [clojure.core.async :as ca]
             [asynctopia
              [core :as c]
-             [protocols :as proto]
              [channels :as channels]
              [null :as null]
              [util :as ut]]))
@@ -140,8 +139,8 @@
                                                      (sequential? topic-buffer)  ;; [:dropping/:sliding N]
                                                      [topic-buffer (/ (second topic-buffer) nconsumers)]
 
-                                                     :else [(proto/clone-empty topic-buffer)
-                                                            (/ (.n topic-buffer) nconsumers)])
+                                                     :else [(c/clone-buffer topic-buffer)
+                                                            (/ (.n topic-buffer) nconsumers)]) ;; reflection here
                             sub-chan (channels/chan sub-buf
                                                     (comp (map payload-fn)
                                                           (map null/replacing)))]

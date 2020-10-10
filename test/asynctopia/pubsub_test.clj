@@ -28,7 +28,7 @@
           [pb in-chan sub-chans] (-> (fn [i]
                                        {:topic (rand-nth topics)
                                         :message (when (< i N) (rand-nth messages))})
-                                     (channels/gen-chan nil N)
+                                     (channels/gen-chan (constantly 50) N)
                                      (pub-sub! config))]
 
       (is (= N (count (ca/<!! (ca/into [] results)))))

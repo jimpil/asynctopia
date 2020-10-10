@@ -5,7 +5,39 @@
              [ops :as ops]
              [util :as ut]
              [channels :as channels]
-             [null :as null]]))
+             [null :as null]])
+  (:import (clojure.core.async.impl.channels ManyToManyChannel)))
+
+(defn channel-buffer
+  "Returns this channel's buffer.
+   This is a mutable object, so be
+   careful what you do with it."
+  [^ManyToManyChannel c]
+  (.buf c))
+
+(defn clone-buffer
+  "Returns an empty clone of buffer <b>
+   (i.e. with the same buffering capacity)."
+  [b]
+  (proto/clone-empty b))
+
+(defn clone-channel
+  "Clones the buffer from <c> (per `clone-buffer`),
+   and constructs a channel with it (`xform`/`ex-handler` CANNOT be cloned)."
+  [ch]
+  (-> ch channel-buffer clone-buffer channels/chan))
+
+(defn snapshot-buffer
+  "Returns a seq with the (current) contents of buffer <b>.
+   Available only to thread-safe buffers (see `asynctopia.buffers`)."
+  [b]
+  (proto/snapshot b))
+
+(defn snapshot-channel
+  "Returns a seq with the (current) contents of
+   this channel's buffer (per `snapshot-buffer`)."
+  [ch]
+  (-> ch channel-buffer snapshot-buffer))
 
 (defn consuming-with
   "Sets up two `go` loops for consuming values VS errors
