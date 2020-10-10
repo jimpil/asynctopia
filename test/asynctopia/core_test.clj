@@ -106,19 +106,24 @@
 
   (testing "snapshot-buffer"
     (testing "sliding buffer"
-      (let [sliding-chan  (channels/chan [:buffer/sliding 3])]
+      (let [slided (atom [])
+            sliding-chan  (channels/chan
+                            [:buffer/sliding 3 nil (partial swap! slided conj)])]
         ;; put 0,1,2
         (dotimes [i 3] (ca/>!! sliding-chan i))
-        ;; put 3=>23 with interleaved assertions
+        ;; put 3=>22 with interleaved assertions
         (doseq [i (range 3 23)]
           (is (= (range (- i 3) i)
                  (reverse (snapshot-channel sliding-chan))))
           (ca/>!! sliding-chan i))
 
+        (is (= (range 20) @slided))
         (ca/close! sliding-chan)))
 
     (testing "dropping buffer"
-      (let [dropping-chan  (channels/chan [:buffer/dropping 3])]
+      (let [dropped (atom [])
+            dropping-chan  (channels/chan
+                             [:buffer/dropping 3 nil (partial swap! dropped conj)])]
         ;; put 0,1,2
         (dotimes [i 3] (ca/>!! dropping-chan i))
         ;; put 3=>23 with interleaved assertions (all dropped)
@@ -127,6 +132,7 @@
                  (reverse (snapshot-channel dropping-chan))))
           (ca/>!! dropping-chan i))
 
+        (is (= (range 3 23) @dropped))
         (ca/close! dropping-chan)))
     )
   )
