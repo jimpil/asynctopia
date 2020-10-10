@@ -2,10 +2,10 @@
   (:require [clojure.core.async :as ca]
             [asynctopia
              [core :as c]
+             [protocols :as proto]
              [channels :as channels]
-             [util :as ut]]
-            [asynctopia.null :as null]
-            [asynctopia.protocols :as proto]))
+             [null :as null]
+             [util :as ut]]))
 ;; a `pub` is a go block pulling from one channel and feeding it in to
 ;; a `mult` (one per sub'ed topic), and a `mult` is a go block pulling
 ;; from one channel and writing to multiple channels.
@@ -132,6 +132,7 @@
                             nconsumers (if (fn? multi-nconsumers)
                                          (multi-nconsumers topic)
                                          (or nconsumers 1))
+                            _ (assert (pos? nconsumers))
                             [sub-buf per-consumer] (cond
                                                      (number? topic-buffer)
                                                      [topic-buffer (/ topic-buffer nconsumers)]
@@ -149,7 +150,7 @@
                           (c/consuming-with ;; consume
                             topic-processor
                             sub-chan
-                            :buffer per-consumer
+                            :buffer   (long per-consumer)
                             :error?   (or topic-error? ut/throwable?)
                             :error!   (or topic-error! ut/println-error-handler)
                             :to-error (or topic-to-error identity)))
