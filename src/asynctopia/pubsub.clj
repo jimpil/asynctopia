@@ -132,15 +132,13 @@
                                          (multi-nconsumers topic)
                                          (or nconsumers 1))
                             [sub-buffer per-consumer]
-                            (cond
-                              (number? topic-buffer)
-                              [topic-buffer (/ topic-buffer nconsumers)]
-
-                              (sequential? topic-buffer) ;; [:dropping/:sliding N]
-                              [topic-buffer (/ (second topic-buffer) nconsumers)]
-
-                              :else [topic-buffer (/ (.n topic-buffer) nconsumers)])
-
+                            [topic-buffer (cond
+                                            (number? topic-buffer)
+                                            (/ topic-buffer nconsumers)
+                                            (sequential? topic-buffer)  ;; [:dropping/:sliding N]
+                                            (/ (second topic-buffer) nconsumers)
+                                            :else ;; assuming prebuilt buffer instance (extract its capacity)
+                                            (/ (.n topic-buffer) nconsumers))]
                             sub-chan (channels/chan sub-buffer
                                                     (comp (map payload-fn)
                                                           (map null/replacing)))]
