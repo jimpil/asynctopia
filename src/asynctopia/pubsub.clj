@@ -89,8 +89,11 @@
    Finally, and since we know the processing-fn per topic, sets-up
    consuming loops for all subscriptions. The number of consuming loops
    per subscription is controlled by <nconsumers> (defaults to 1), and
-   the subscription channels are buffered per `(/ topic-buffer nconsumers)`.
+   the subscription channels are buffered per `(/ topic-buffer nconsumers)`
+   (i.e. subscriptions buffer just enough to satisfy all consumers).
    Returns a vector of 3 elements - the publication, <in>, and the subscription channels.
+   See `unpub-sub!` for stopping/cleaning up the whole thing.
+
    This can form the basis of a simple (in-process) event-bus (events arrive in <in>,
    and routed to their respective topic processors)."
   [in {:keys [topic-fn ;; required
@@ -151,7 +154,7 @@
                     topic-config)]
     [pb in (doall sub-chans)]))
 
-(defn close-pub!
+(defn unpub-sub!
   "Unsubscribes everything from <pb> (a publication),
    after closing <pb-in-chan> (its input channel)."
   [pb pb-in-chan & _]
