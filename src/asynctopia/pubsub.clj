@@ -3,7 +3,8 @@
             [asynctopia
              [core :as c]
              [channels :as channels]
-             [util :as ut]]))
+             [util :as ut]]
+            [asynctopia.null :as null]))
 ;; a `pub` is a go block pulling from one channel and feeding it in to
 ;; a `mult` (one per sub'ed topic), and a `mult` is a go block pulling
 ;; from one channel and writing to multiple channels.
@@ -140,15 +141,17 @@
 
                               :else [topic-buffer (/ (.n topic-buffer) nconsumers)])
 
-                            sub-chan (channels/chan sub-buffer (map payload-fn))]
+                            sub-chan (channels/chan sub-buffer
+                                                    (comp (map payload-fn)
+                                                          (map null/replacing)))]
                         (ca/sub pb topic sub-chan) ;; subscribe
                         (dotimes [_ nconsumers]
                           (c/consuming-with ;; consume
                             topic-processor
                             sub-chan
                             :buffer per-consumer
-                            :error? (or topic-error? ut/throwable?)
-                            :error! (or topic-error! ut/println-error-handler)
+                            :error?   (or topic-error? ut/throwable?)
+                            :error!   (or topic-error! ut/println-error-handler)
                             :to-error (or topic-to-error identity)))
                         sub-chan))
                     topic-config)]
