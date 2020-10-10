@@ -53,19 +53,46 @@
 
 
 (defn pub-sub!
-  "Configuration-driven (<topics>) `pub-sub` infrastructure.
+  "Configuration-driven PUB-SUB infrastructure. Supports two layouts
+   for <global-config> as seen in the sample below:
+
+   {:topic-fn   :topic   ;; MUST exist
+    :payload-fn :message ;; defaults to `identity`
+
+    ;; LAYOUT #1 (multi-method based)
+    :topics         [:fiserv :chase]       ;; topic-keys
+    :multi-process! (fn [topic msg] ...)
+    :multi-error?   (fn [topic msg] ...)
+    :multi-error!   (fn [topic error] ...)
+    :multi-to-error (fn [topic msg] ...)
+    :multi-nconsumers {:fiserv 2   :chase 3}
+    :multi-buffer     {:fiserv 512 :chase 128}
+
+     ;; LAYOUT #2 (based on explicit topic-keys => options)
+     :fiserv {:process! (fn [msg] ...)  ;; no topic required here
+              :buffer 512
+              :nconsumers 2
+              :error? throwable?
+              :error! println
+              :to-error identity}
+     :chase  {:process! (fn [msg] ...)
+              :buffer 128
+              :nconsumers 3
+              :error? throwable?
+              :error! println
+              :to-error identity}
+     }
+
    Creates a publication against channel <in> with <topic-fn> and
-   <topic->buffer> (maps topic-keys to custom buffers - see `pub`).
+   the right topic->buffer map (built from the config).
    Then sets up subscriptions against the publication for all topics.
-   <topics> must be either a map from topic to its process-fn (1-arg),
-   or a vector of two elements - the list of topics followed by a common
-   process-fn (2-arg, the topic-key first). Finally, and since we know
-   the processing-fn per topic, sets-up consuming loops (again buffered per <topic->buffer>)
-   for all subscriptions. The number of consuming loops per subscription is controlled
-   by <topic->nconsumers> (a map from topic-key => positive integer, defaults to 1).
-   Returns a vector of 2 elements - the publication, and the subscription channels.
+   Finally, and since we know the processing-fn per topic, sets-up
+   consuming loops for all subscriptions. The number of consuming loops
+   per subscription is controlled by <nconsumers> (defaults to 1), and
+   the subscription channels are buffered per `(/ topic-buffer nconsumers)`.
+   Returns a vector of 3 elements - the publication, <in>, and the subscription channels.
    This can form the basis of a simple (in-process) event-bus (events arrive in <in>,
-   and distributed to their respective topic processors)."
+   and routed to their respective topic processors)."
   [in {:keys [topic-fn ;; required
               payload-fn
               topics   ;; determines if the below are required/useful
@@ -136,7 +163,7 @@
 (comment
   ;; sample config
   {:topic-fn :topic ;; MUST exist
-   :message-fn :message
+   :payload-fn :message
 
    ;; layout #1
    :topics [:fiserv :chase]
