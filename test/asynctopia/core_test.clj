@@ -123,13 +123,13 @@
     (testing "dropping buffer"
       (let [dropped (atom [])
             dropping-chan  (channels/chan
-                             [:buffer/dropping 3 nil (partial swap! dropped conj)])]
+                             [:buffer/dropping 3 nil (partial swap! dropped conj)])
+            expected (range 3)]
         ;; put 0,1,2
         (dotimes [i 3] (ca/>!! dropping-chan i))
         ;; put 3=>23 with interleaved assertions (all dropped)
         (doseq [i (range 3 23)]
-          (is (= (range 3)
-                 (reverse (snapshot-channel dropping-chan))))
+          (is (= expected (reverse (snapshot-channel dropping-chan))))
           (ca/>!! dropping-chan i))
 
         (is (= (range 3 23) @dropped))

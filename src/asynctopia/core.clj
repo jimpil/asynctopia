@@ -5,32 +5,37 @@
              [ops :as ops]
              [util :as ut]
              [channels :as channels]
-             [null :as null]])
-  (:import (clojure.core.async.impl.channels ManyToManyChannel)))
+             [null :as null]]
+            [clojure.core.async.impl.mutex :as mutex])
+  (:import (clojure.core.async.impl.channels ManyToManyChannel)
+           (java.util LinkedList)))
 
 (defn channel-buffer
-  "Returns this channel's buffer.
-   This is a mutable object, so be
-   careful what you do with it."
+  "Returns this channel's buffer. This is a non thread-safe
+   mutable object, so be careful what you do with it."
   [^ManyToManyChannel c]
   (.buf c))
 
 (defn clone-buffer
-  "Returns an empty clone of buffer <b>
-   (i.e. with the same buffering capacity)."
+  "Returns a new/empty version of this buffer."
   [b]
   (proto/clone-empty b))
 
 (defn snapshot-buffer
-  "Returns a seq with the (current) contents of buffer <b>.
-   Available only to thread-safe buffers (see `asynctopia.buffers`)."
+  "Returns a seq with the (current) contents this buffer."
   [b]
   (proto/snapshot b))
 
-(def clone-channel
-  "Clones the buffer from <c> (per `clone-buffer`),
-   and constructs a channel with it (`xform`/`ex-handler` CANNOT be cloned)."
-  (comp channels/chan clone-buffer channel-buffer))
+(defn clone-channel
+  "Returns a new/empty version of this channel."
+  ^ManyToManyChannel [^ManyToManyChannel ch]
+  (ManyToManyChannel.
+    (LinkedList.)
+    (LinkedList.)
+    (-> ch channel-buffer clone-buffer)
+    (atom false)
+    (mutex/mutex)
+    (.-add_BANG_ ch)))
 
 (def snapshot-channel
   "Returns a seq with the (current) contents of
@@ -169,15 +174,3 @@
           (if (next new-futs-and-cs)
             (recur new-futs-and-cs)
             (ca/<!! (second (first new-futs-and-cs)))))))))
-
-(defn snapshot-buffer
-  "Returns the (current) contents of this
-   channel's (presumably thread-safe) buffer."
-  [ch]
-  (proto/snapshot ch))
-
-(defn empty-buffer
-  "Returns a new/empty buffer of the same type,
-   and (buffering) capacity as this channel's buffer."
-  [ch]
-  (proto/clone-empty ch))
