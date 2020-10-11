@@ -79,8 +79,16 @@
  ```
  "
   ([servers group-id topics]
-   (create! servers group-id topics nil 100))
-  ([servers group-id topics options poll-timeout]
+   (create! servers group-id topics nil))
+  ([servers group-id topics options]
+   (create! servers group-id topics options 500))
+  ([servers group-id topics options empty-interval]
+   (create! servers group-id topics options empty-interval
+            (partial println "Total consumed:")))
+  ([servers group-id topics options empty-interval consumed!]
+   (create! servers group-id topics options empty-interval consumed!
+            (partial println "Dropping kafka consumer-records prior to final commit:")))
+  ([servers group-id topics options empty-interval consumed! dropping!]
    (let [^Map opts (-> {:bootstrap.servers servers
                         :group.id          group-id}
                        (merge defaults options))
@@ -92,39 +100,47 @@
      (when-let [topics (not-empty topics)]
        (.subscribe consumer (ArrayList. ^Collection topics))
 
-       (ca/go-loop []
-         (let [records (.poll consumer (Duration/ofMillis 1))
-               topic->records (into {} (keep (records-by-topic records)) topics)]
+       (ca/go-loop [consumed 0]
+         (let [records (try (.poll consumer (Duration/ofMillis 1))
+                            (catch Exception _ ::done))
+               proceed? (not= ::done records)
+               topic->records (when proceed?
+                                (into {} (keep (records-by-topic records)) topics))]
            (cond
-             (empty? topic->records)
-             (do (ca/<! (ca/timeout poll-timeout))
-                 (recur))
-
-             (and (ca/>! out-chan topic->records)
-                  (ca/<! commit-chan))
+             ;; nothing to consume
+             (and proceed? (empty? topic->records))
+             (do (ca/<! (ca/timeout empty-interval))
+                 (recur consumed))   ;; check again later
+             ;; something to consume
+             (and proceed?
+                  (ca/>! out-chan topic->records) ;; put it in
+                  (ca/<! commit-chan))            ;; wait for the commit signal (any truthy value)
              (do (->> (async-retry-callback consumer retry-callback-pos)
-                      (.commitAsync consumer))
-                 (recur))
+                      (.commitAsync consumer))    ;; commit to kafka
+                 (recur (+ consumed (count records)))) ;; check again
              :else
-             (do (.unsubscribe consumer)
+             (do (consumed! consumed)
+                 (dropping! topic->records)
+                 (.commitSync consumer)
                  (.close consumer)))))
 
        {:out-chan    out-chan
-        :commit-chan commit-chan
+        ;:commit-chan commit-chan
+        :commit!     (partial ca/put! commit-chan :kafka/commit)
         :stop!       (fn []
                        (ca/close! out-chan)
                        (ca/close! commit-chan))}
        ))))
 
 (comment
-  (let [{:keys [out-chan commit-chan]} (create! )]
+  (let [{:keys [out-chan commit!]} (create! )]
     (c/consuming-with
       (fn [topic->messages]
         ;; consume (do something with) x
         (send-off topic-processor
                   (fn [state]
                     (process-topics! topic->messages)
-                    (ca/put! commit-chan ::commit) ;; commit as soon as consumed
+                    (commit!) ;; commit as soon as consumed
                     (update-in state [:summary :processed]
                                (count (apply concat (vals topic->messages)))))))
       out-chan)
