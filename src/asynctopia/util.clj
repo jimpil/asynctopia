@@ -1,7 +1,8 @@
 (ns asynctopia.util
   (:import (clojure.core.async.impl.channels ManyToManyChannel)
            (clojure.lang IReduceInit)
-           (java.time ZonedDateTime)))
+           (java.time ZonedDateTime)
+           (java.util UUID)))
 
 (defn println-error-handler
   [^Throwable t]
@@ -25,3 +26,6 @@
 (defn snapshot-java-collection
   [coll]
   (seq (to-array coll)))
+
+(defn uuid-str []
+  (str (UUID/randomUUID)))

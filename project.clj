@@ -6,6 +6,8 @@
   :dependencies [[org.clojure/clojure "1.10.1" :scope "provided"]
                  [org.clojure/core.async "1.3.610"]
                  [clambda "0.1.5"]]
+  :profiles {:dev {:dependencies
+                   [[org.apache.kafka/kafka_2.13 "2.6.0"]]}}
   :repl-options {:init-ns asynctopia.core}
 
   :release-tasks [["vcs" "assert-committed"]
