@@ -42,9 +42,9 @@
                   :message   (.value consumer-record)})
                rs)]))))
 
-(defn safe-retry-callback
+(defn async-retry-callback
   "Per the book 'Kafka - The Definitive Guide'
-   on 'Robust Retry handling with commitAsync()'."
+   on retrying async commits."
   ^OffsetCommitCallback
   [^org.apache.kafka.clients.consumer.KafkaConsumer consumer
    ^AtomicLong counter]
@@ -85,7 +85,7 @@
                         :group.id          group-id}
                        (merge defaults options))
          consumer    (org.apache.kafka.clients.consumer.KafkaConsumer. opts)
-         retry-callback-pos (AtomicLong. 0)
+         retry-callback-pos (AtomicLong. Long/MIN_VALUE)
          out-chan    (channels/chan 1)
          commit-chan (channels/chan)]
 
@@ -102,7 +102,7 @@
 
              (and (ca/>! out-chan topic->records)
                   (ca/<! commit-chan))
-             (do (->> (safe-retry-callback consumer retry-callback-pos)
+             (do (->> (async-retry-callback consumer retry-callback-pos)
                       (.commitAsync consumer))
                  (recur))
              :else
