@@ -5,7 +5,7 @@
             [clojure.walk :as walk]
             [clojure.edn :as edn])
   (:import (java.util Map ArrayList Collection)
-           (java.time Duration)
+           (java.time Duration Instant)
            (org.apache.kafka.clients.consumer OffsetCommitCallback)
            (java.util.concurrent.atomic AtomicLong)))
 
@@ -25,7 +25,15 @@
    :value.deserializer "org.apache.kafka.common.serialization.StringDeserializer"
    })
 
-(defn records-by-topic
+(defn consumer-record->map
+  [^org.apache.kafka.clients.consumer.ConsumerRecord r]
+  {:topic     (.topic r)
+   :partition (.partition r)
+   :offset    (.offset r)
+   :timestamp (Instant/ofEpochMilli (.timestamp r))
+   :event     (edn/read-string (.value r))})
+
+(defn group-by-topic
   "Higher order function that receives a set of consumer records and returns a function that expects a topic.
   The purpose of this returned function is to map each record in the set to a the topic passed as argument.
   The follwing data structure is returned:
@@ -34,14 +42,10 @@
   ```
   "
   [^org.apache.kafka.clients.consumer.ConsumerRecords records]
-  (fn [^String topic]
-    (let [consumer-records (.records records topic)]
-      (when-let [rs (seq consumer-records)]
-        [(keyword topic)
-         (mapv (fn [^org.apache.kafka.clients.consumer.ConsumerRecord consumer-record]
-                 {:timestamp (.timestamp consumer-record)
-                  :message   (edn/read-string (.value consumer-record)})
-               rs)]))))
+  (->> records
+       (map consumer-record->map)
+       (group-by :topic)
+       walk/keywordize-keys))
 
 (defn async-retry-callback
   "Per the book 'Kafka - The Definitive Guide'
@@ -98,7 +102,6 @@
          retry-id    (AtomicLong. Long/MIN_VALUE)
          out-chan    (channels/chan 1)
          commit-chan (channels/chan)]
-
      (when-let [topics (not-empty topics)]
        (.subscribe consumer (ArrayList. ^Collection topics))
 
@@ -106,34 +109,33 @@
          (let [records (try (.poll consumer (Duration/ofMillis 1))
                             (catch Exception _ ::abort))
                proceed? (not= ::abort records)
-               topic->records (when proceed?
-                                (into {} (keep (records-by-topic records)) topics))]
+               topic->events (when proceed? (group-by-topic records))]
            (cond
              ;; nothing to consume
-             (and proceed? (empty? topic->records))
+             (and proceed? (empty? topic->events))
              (do (ca/<! (ca/timeout empty-interval))
                  (recur consumed))   ;; check again later
              ;; something to consume
              (and proceed?
-                  (ca/>! out-chan topic->records) ;; put it in (first put is guaranteed to succeed)
+                  (ca/>! out-chan topic->events) ;; put it in (first put is guaranteed to succeed)
                   (ca/<! commit-chan))            ;; park waiting for the commit signal (any truthy value)
              (do (->> (async-retry-callback consumer retry-id)
                       (.commitAsync consumer))    ;; commit to kafka
-                 (recur (->> (vals topic->records)
+                 (recur (->> (vals topic->events)
                              (map count)
                              (apply + consumed))))
              :else ;; about to exit the loop - close everything
-             (do (ca/close! out-chan)       ;; noop when already closed
-                 (ca/close! commit-chan)    ;; noop when already closed
-                 (consumed! consumed)       ;; report on totals?
-                 (dropping! topic->records) ;; report on potentially dropped records?
-                 (.commitSync consumer)     ;; final commit
-                 (.close consumer)))))      ;; close kafka consumer
+             (do (consumed! consumed)       ;; report on totals?
+                 (dropping! topic->events) ;; report on potentially dropped records?
+                 (try (.commitSync consumer) (catch Exception _ nil))     ;; final commit
+                 (try (.close consumer (catch Exception _ nil)))))))      ;; close kafka consumer
 
        {:out-chan    out-chan
         ;:commit-chan commit-chan
         :commit!     (partial ca/put! commit-chan :kafka/commit)
         :destroy!    (fn []
+                       (.commitSync consumer)
+                       (.close consumer)
                        (ca/close! out-chan)
                        (ca/close! commit-chan))}
        ))))
