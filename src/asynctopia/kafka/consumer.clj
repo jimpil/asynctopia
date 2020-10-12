@@ -147,8 +147,8 @@
                   (fn [state]
                     (process-topics! topic->messages)
                     (commit!) ;; commit as soon as consumed
-                    (update-in state [:summary :processed]
-                               (count (apply concat (vals topic->messages)))))))
+                    (update-in state [:summary :processed] +
+                               (apply + (map count (vals topic->messages)))))))
       out-chan)
     )
   )
