@@ -61,7 +61,7 @@
                    (= commit-id (.get id)))
           (.commitAsync consumer this))))))
 
-(defn create!
+(defn edn-consumer
   "Creates a Kafka Consumer client with a core.async interface given the broker's list and group id.
  After the Java Kafka consumer is created it's saved in the `consumers` atom with the following format:
  ```clojure
@@ -84,15 +84,15 @@
  ```
  "
   ([servers group-id topics]
-   (create! servers group-id topics nil))
+   (edn-consumer servers group-id topics nil))
   ([servers group-id topics options]
-   (create! servers group-id topics options 500))
+   (edn-consumer servers group-id topics options 500))
   ([servers group-id topics options empty-interval]
-   (create! servers group-id topics options empty-interval
-            (partial println "Total consumed:")))
+   (edn-consumer servers group-id topics options empty-interval
+                 (partial println "Total consumed:")))
   ([servers group-id topics options empty-interval consumed!]
-   (create! servers group-id topics options empty-interval consumed!
-            (partial println "Dropping kafka consumer-records prior to final commit:")))
+   (edn-consumer servers group-id topics options empty-interval consumed!
+                 (partial println "Dropping kafka consumer-records prior to final commit:")))
   ([servers group-id topics options empty-interval consumed! dropping!]
    (let [^Map opts (-> {:bootstrap.servers servers
                         :group.id          group-id}
@@ -130,7 +130,7 @@
              :else
              (future ;; don't block here
                (close-chans)
-               (.close consumer))))
+               (.close consumer)))))
 
        {:out-chan    out-chan
         ;:commit-chan commit-chan
@@ -142,7 +142,7 @@
        ))))
 
 (comment
-  (let [{:keys [out-chan commit!]} (create! )]
+  (let [{:keys [out-chan commit!]} (edn-consumer)]
     (c/consuming-with
       (fn [topic->messages]
         ;; consume (do something with) x

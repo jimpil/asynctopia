@@ -51,6 +51,6 @@
      (ops/sink-with #(.send producer %)
                     in-chan
                     error!
-                    #(.close producer))
+                    #(future (.close producer))) ;; don't block here
      in-chan)))
 
