@@ -29,11 +29,14 @@
   ([f ch]
    (sink-with f ch ut/println-error-handler))
   ([f ch error!]
+   (sink-with f ch error! (constantly nil)))
+  ([f ch error! done!]
    (ca/go-loop []
-     (when-some [x (ca/<! ch)]
-       (try (f (null/restoring x))
-            (catch Throwable t (error! t)))
-       (recur)))))
+     (if-some [x (ca/<! ch)]
+       (do (try (f (null/restoring x))
+                (catch Throwable t (error! t)))
+           (recur))
+       (done!)))))
 
 (def drain
   "Fully consumes a channel disregarding its contents.
