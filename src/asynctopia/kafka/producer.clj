@@ -1,7 +1,9 @@
 (ns asynctopia.kafka.producer
   (:require [asynctopia.channels :as channels]
             [asynctopia.ops :as ops]
-            [clojure.core.async :as ca])
+            [clojure.core.async :as ca]
+            [asynctopia.util :as ut]
+            [clojure.walk :as walk])
   (:import (java.util Map)))
 
 (try
@@ -13,13 +15,18 @@
         "`kafka` dependency not found - aborting ..."))))
 
 (def defaults
-  {:retries "0"
-   :batch.size "16384"
-   :linger.ms "1"
-   :buffer.memory "33554432"
-   :key.serializer "org.apache.kafka.common.serialization.StringSerializer"
-   :value.serializer "org.apache.kafka.common.serialization.StringSerializer"
-   :acks "1"})
+  {:batch.size         "1024"
+   :linger.ms          "1"
+   :max.block.ms       "1"
+   :buffer.memory      "5242880" ;; 5MB
+   :key.serializer     "org.apache.kafka.common.serialization.StringSerializer"
+   :value.serializer   "org.apache.kafka.common.serialization.StringSerializer"
+   :enable.idempotence true ;; 'exactly-once' delivery semantics
+   :error!             ut/println-error-handler
+   ;; not needed for idempotent producers
+   ;:retries "0"
+   ;:acks "all"
+   })
 
 (defn ->producer-record
   "Converts a map into a Kafka Producer Record.
@@ -46,14 +53,15 @@
   ([servers client-id buf-or-n options]
    (let [^Map opts (-> {:bootstrap.servers servers
                         :client.id client-id}
-                       (merge defaults options))
+                       (merge (dissoc defaults :error!) options)
+                       walk/stringify-keys)
          producer (org.apache.kafka.clients.producer.KafkaProducer. opts)
          in-chan (channels/chan buf-or-n (map ->producer-record))]
-     (ops/sink-with #(.send producer %) in-chan)
-     {:in-chan in-chan
-      :stop!   (fn []
-                 (ca/close! in-chan)
-                 (.close producer))})))
+     (ops/sink-with #(.send producer (pr-str %)) in-chan (:error! options identity))
+     {:in-chan  in-chan
+      :destroy! (fn []
+                  (ca/close! in-chan)
+                  (.close producer))})))
 
 
 

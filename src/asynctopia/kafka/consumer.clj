@@ -1,7 +1,9 @@
 (ns asynctopia.kafka.consumer
   (:require [clojure.core.async :as ca]
             [asynctopia.channels :as channels]
-            [asynctopia.core :as c])
+            [asynctopia.core :as c]
+            [clojure.walk :as walk]
+            [clojure.edn :as edn])
   (:import (java.util Map ArrayList Collection)
            (java.time Duration)
            (org.apache.kafka.clients.consumer OffsetCommitCallback)
@@ -18,9 +20,8 @@
 
 (def defaults
   {:enable.auto.commit  "false"
-   :auto.commit.interval.ms "1000"
    :session.timeout.ms "30000"
-   :key.deserializer "org.apache.kafka.common.serialization.StringDeserializer"
+   :key.deserializer   "org.apache.kafka.common.serialization.StringDeserializer"
    :value.deserializer "org.apache.kafka.common.serialization.StringDeserializer"
    })
 
@@ -39,7 +40,7 @@
         [(keyword topic)
          (mapv (fn [^org.apache.kafka.clients.consumer.ConsumerRecord consumer-record]
                  {:timestamp (.timestamp consumer-record)
-                  :message   (.value consumer-record)})
+                  :message   (edn/read-string (.value consumer-record)})
                rs)]))))
 
 (defn async-retry-callback
@@ -47,13 +48,13 @@
    on retrying async commits."
   ^OffsetCommitCallback
   [^org.apache.kafka.clients.consumer.KafkaConsumer consumer
-   ^AtomicLong counter]
-  (let [position (.incrementAndGet counter)]
+   ^AtomicLong id]
+  (let [commit-id (.incrementAndGet id)]
     (proxy [OffsetCommitCallback] []
       (onComplete [offsets m exception]
         ;; retrying only if no other commit incremented the global counter
         (when (and (some? exception)
-                   (= position (.get counter)))
+                   (= commit-id (.get id)))
           (.commitAsync consumer this))))))
 
 (defn create!
@@ -91,9 +92,10 @@
   ([servers group-id topics options empty-interval consumed! dropping!]
    (let [^Map opts (-> {:bootstrap.servers servers
                         :group.id          group-id}
-                       (merge defaults options))
+                       (merge defaults options)
+                       walk/stringify-keys)
          consumer    (org.apache.kafka.clients.consumer.KafkaConsumer. opts)
-         retry-callback-pos (AtomicLong. Long/MIN_VALUE)
+         retry-id    (AtomicLong. Long/MIN_VALUE)
          out-chan    (channels/chan 1)
          commit-chan (channels/chan)]
 
@@ -102,8 +104,8 @@
 
        (ca/go-loop [consumed 0]
          (let [records (try (.poll consumer (Duration/ofMillis 1))
-                            (catch Exception _ ::done))
-               proceed? (not= ::done records)
+                            (catch Exception _ ::abort))
+               proceed? (not= ::abort records)
                topic->records (when proceed?
                                 (into {} (keep (records-by-topic records)) topics))]
            (cond
@@ -113,21 +115,25 @@
                  (recur consumed))   ;; check again later
              ;; something to consume
              (and proceed?
-                  (ca/>! out-chan topic->records) ;; put it in
-                  (ca/<! commit-chan))            ;; wait for the commit signal (any truthy value)
-             (do (->> (async-retry-callback consumer retry-callback-pos)
+                  (ca/>! out-chan topic->records) ;; put it in (first put is guaranteed to succeed)
+                  (ca/<! commit-chan))            ;; park waiting for the commit signal (any truthy value)
+             (do (->> (async-retry-callback consumer retry-id)
                       (.commitAsync consumer))    ;; commit to kafka
-                 (recur (+ consumed (count records)))) ;; check again
-             :else
-             (do (consumed! consumed)
-                 (dropping! topic->records)
-                 (.commitSync consumer)
-                 (.close consumer)))))
+                 (recur (->> (vals topic->records)
+                             (map count)
+                             (apply + consumed))))
+             :else ;; about to exit the loop - close everything
+             (do (ca/close! out-chan)       ;; noop when already closed
+                 (ca/close! commit-chan)    ;; noop when already closed
+                 (consumed! consumed)       ;; report on totals?
+                 (dropping! topic->records) ;; report on potentially dropped records?
+                 (.commitSync consumer)     ;; final commit
+                 (.close consumer)))))      ;; close kafka consumer
 
        {:out-chan    out-chan
         ;:commit-chan commit-chan
         :commit!     (partial ca/put! commit-chan :kafka/commit)
-        :stop!       (fn []
+        :destroy!    (fn []
                        (ca/close! out-chan)
                        (ca/close! commit-chan))}
        ))))

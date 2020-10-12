@@ -31,7 +31,7 @@
     (let [xs [:foo :bar :baz]
           gen! (fn [_] (rand-nth xs))
           interval! (partial rand-int 100)
-          gchan (gen-chan gen! interval!)
+          gchan (generator-chan gen! interval!)
           [mg cnt-chan] (core/with-counting gchan)]
       (future
         (Thread/sleep 3000)

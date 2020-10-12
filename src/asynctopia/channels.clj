@@ -142,16 +142,16 @@
       (recur (inc n))
       n)))
 
-(defn gen-chan
+(defn generator-chan
   "Starts putting values per <gen-val> (1-arg fn - the looping index)
    onto the provided channel <ch>. An interval-fn (no-arg fn which
    returns millis) can be provided as the third argument."
   ([gen-val gen-ms]
-   (gen-chan gen-val gen-ms nil))
+   (generator-chan gen-val gen-ms nil))
   ([gen-val gen-ms buf-or-n]
-   (gen-chan gen-val gen-ms buf-or-n nil))
+   (generator-chan gen-val gen-ms buf-or-n nil))
   ([gen-val gen-ms buf-or-n xform]
-   (gen-chan gen-val gen-ms buf-or-n xform nil))
+   (generator-chan gen-val gen-ms buf-or-n xform nil))
   ([gen-val gen-ms buf-or-n xform ex-handler]
    (let [c (chan buf-or-n xform ex-handler)]
      (ca/go-loop [i 0]
