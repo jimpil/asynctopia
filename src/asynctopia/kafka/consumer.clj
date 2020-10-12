@@ -101,43 +101,44 @@
          consumer    (org.apache.kafka.clients.consumer.KafkaConsumer. opts)
          retry-id    (AtomicLong. Long/MIN_VALUE)
          out-chan    (channels/chan 1)
-         commit-chan (channels/chan)]
+         commit-chan (channels/chan)
+         close-chans #(do (ca/close! out-chan)
+                          (ca/close! commit-chan))]
      (when-let [topics (not-empty topics)]
        (.subscribe consumer (ArrayList. ^Collection topics))
 
-       (ca/go-loop [consumed 0]
+       (ca/go-loop [polled 0]
          (let [records (try (.poll consumer (Duration/ofMillis 1))
-                            (catch Exception _ ::abort))
-               proceed? (not= ::abort records)
+                            (catch Exception _ :kafka/error))
+               proceed? (not= :kafka/error records)
                topic->events (when proceed? (group-by-topic records))]
            (cond
              ;; nothing to consume
              (and proceed? (empty? topic->events))
              (do (ca/<! (ca/timeout empty-interval))
-                 (recur consumed))   ;; check again later
+                 (recur polled))   ;; check again later
              ;; something to consume
              (and proceed?
-                  (ca/>! out-chan topic->events) ;; put it in (first put is guaranteed to succeed)
+                  (ca/>! out-chan topic->events)  ;; put it in (always room for 1)
                   (ca/<! commit-chan))            ;; park waiting for the commit signal (any truthy value)
              (do (->> (async-retry-callback consumer retry-id)
                       (.commitAsync consumer))    ;; commit to kafka
                  (recur (->> (vals topic->events)
                              (map count)
-                             (apply + consumed))))
-             :else ;; about to exit the loop - close everything
-             (do (consumed! consumed)       ;; report on totals?
-                 (dropping! topic->events) ;; report on potentially dropped records?
-                 (try (.commitSync consumer) (catch Exception _ nil))     ;; final commit
-                 (try (.close consumer (catch Exception _ nil)))))))      ;; close kafka consumer
+                             (apply + polled))))
+
+             :else
+             (future ;; don't block here
+               (close-chans)
+               (.close consumer))))
 
        {:out-chan    out-chan
         ;:commit-chan commit-chan
         :commit!     (partial ca/put! commit-chan :kafka/commit)
         :destroy!    (fn []
+                       ;; final sync commit (safety hook per the book)
                        (.commitSync consumer)
-                       (.close consumer)
-                       (ca/close! out-chan)
-                       (ca/close! commit-chan))}
+                       (.close consumer))}
        ))))
 
 (comment
