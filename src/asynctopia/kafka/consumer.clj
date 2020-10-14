@@ -3,7 +3,8 @@
             [asynctopia.channels :as channels]
             [asynctopia.core :as c]
             [clojure.walk :as walk]
-            [clojure.edn :as edn])
+            [clojure.edn :as edn]
+            [clojure.string :as str])
   (:import (java.util Map ArrayList Collection)
            (java.time Duration Instant)
            (org.apache.kafka.clients.consumer OffsetCommitCallback)
@@ -26,12 +27,12 @@
    })
 
 (defn consumer-record->map
-  [^org.apache.kafka.clients.consumer.ConsumerRecord r]
+  [edn-readers ^org.apache.kafka.clients.consumer.ConsumerRecord r]
   {:topic     (.topic r)
    :partition (.partition r)
    :offset    (.offset r)
    :timestamp (Instant/ofEpochMilli (.timestamp r))
-   :event     (edn/read-string (.value r))})
+   :event     (edn/read-string edn-readers (.value r))})
 
 (defn group-by-topic
   "Higher order function that receives a set of consumer records and returns a function that expects a topic.
@@ -41,9 +42,9 @@
   {:topic ({:timestamp xxx :message \"some kafka message\"})}
   ```
   "
-  [^org.apache.kafka.clients.consumer.ConsumerRecords records]
+  [^org.apache.kafka.clients.consumer.ConsumerRecords records edn-readers ]
   (->> records
-       (map consumer-record->map)
+       (map (partial consumer-record->map edn-readers))
        (group-by :topic)
        walk/keywordize-keys))
 
@@ -83,6 +84,8 @@
        (recur)))
  ```
  "
+  ([topics]
+   (edn-consumer "localhost:9092" "local-consumer-group" topics))
   ([servers group-id topics]
    (edn-consumer servers group-id topics nil))
   ([servers group-id topics options]
@@ -90,9 +93,11 @@
   ([servers group-id topics options empty-interval]
    (edn-consumer servers group-id topics options empty-interval (partial println "Total:")))
   ([servers group-id topics options empty-interval polled!]
-   (let [^Map opts (-> {:bootstrap.servers servers
-                        :group.id          group-id}
-                       (merge defaults options)
+   (let [servers-str (if (string? servers) servers (str/join \, servers))
+         ^Map opts (-> {:bootstrap.servers servers-str
+                        :group.id          group-id
+                        :client.id         "local-consumer"}
+                       (merge defaults (dissoc options :edn-readers))
                        walk/stringify-keys)
          consumer    (org.apache.kafka.clients.consumer.KafkaConsumer. opts)
          retry-id    (AtomicLong. Long/MIN_VALUE)
@@ -105,7 +110,7 @@
          (let [records (try (.poll consumer (Duration/ofMillis 1))
                             (catch Exception _ :kafka/error))
                proceed? (not= :kafka/error records)
-               topic->events (when proceed? (group-by-topic records))]
+               topic->events (when proceed? (group-by-topic records (:edn-readers options)))]
            (cond
              ;; nothing to consume
              (and proceed? (empty? topic->events))

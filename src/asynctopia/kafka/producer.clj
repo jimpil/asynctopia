@@ -2,7 +2,8 @@
   (:require [asynctopia.channels :as channels]
             [asynctopia.ops :as ops]
             [asynctopia.util :as ut]
-            [clojure.walk :as walk])
+            [clojure.walk :as walk]
+            [clojure.string :as str])
   (:import (java.util Map)))
 
 (try
@@ -37,11 +38,14 @@
    and sets up a `go-loop` forwarding values (maps containing :topic :key :event)
    from the input-channel on to the Producer. Closing the input-channel exits the loop,
    and closes the Kafka Producer. Returns the aforementioned input-channel."
+  ([]
+   (edn-producer "localhost:9092" "local-producer"))
   ([servers client-id]
    (edn-producer servers client-id 1024 nil))
   ([servers client-id buf-or-n options]
-   (let [^Map opts (-> {:bootstrap.servers servers
-                        :client.id client-id}
+   (let [servers-str (if (string? servers) servers (str/join \, servers))
+         ^Map opts (-> {:bootstrap.servers servers-str
+                        :client.id         client-id}
                        (merge defaults options)
                        walk/stringify-keys)
          error!   (get opts "error!" ut/println-error-handler)

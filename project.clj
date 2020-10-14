@@ -7,7 +7,9 @@
                  [org.clojure/core.async "1.3.610"]
                  [clambda "0.1.5"]]
   :profiles {:dev {:dependencies
-                   [[org.apache.kafka/kafka_2.13 "2.6.0"]]}}
+                   [[org.apache.kafka/kafka_2.13 "2.6.0"]
+                    [org.slf4j/slf4j-api "2.0.0-alpha1"]
+                    [org.slf4j/slf4j-simple "2.0.0-alpha1"]]}}
   :repl-options {:init-ns asynctopia.core}
 
   :release-tasks [["vcs" "assert-committed"]
