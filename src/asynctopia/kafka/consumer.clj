@@ -89,7 +89,7 @@
    (edn-consumer servers group-id topics options 500))
   ([servers group-id topics options empty-interval]
    (edn-consumer servers group-id topics options empty-interval (partial println "Total:")))
-  ([servers group-id topics options empty-interval consumed!]
+  ([servers group-id topics options empty-interval polled!]
    (let [^Map opts (-> {:bootstrap.servers servers
                         :group.id          group-id}
                        (merge defaults options)
@@ -121,14 +121,19 @@
                              (map count)
                              (apply + polled))))
 
-             :else (consumed! polled))))
+             :else
+             (future ;; don't block here
+               (polled! polled)
+               ;; just in case .poll() threw something other than "already closed"
+               ;; might itself throw if consumer is already closed
+               (.close consumer)))))
 
        {:out-chan    out-chan
         ;:commit-chan commit-chan
         :commit!     (partial ca/put! commit-chan :kafka/commit)
         :destroy!    (fn []
                        (ca/close! commit-chan)
-                       ;; final sync commit (safety hook per the book)
+                       ;; final sync commit (per the book)
                        (.commitSync consumer)
                        (.close consumer)
                        (ca/close! out-chan))}
