@@ -88,12 +88,8 @@
   ([servers group-id topics options]
    (edn-consumer servers group-id topics options 500))
   ([servers group-id topics options empty-interval]
-   (edn-consumer servers group-id topics options empty-interval
-                 (partial println "Total consumed:")))
+   (edn-consumer servers group-id topics options empty-interval (partial println "Total:")))
   ([servers group-id topics options empty-interval consumed!]
-   (edn-consumer servers group-id topics options empty-interval consumed!
-                 (partial println "Dropping kafka consumer-records prior to final commit:")))
-  ([servers group-id topics options empty-interval consumed! dropping!]
    (let [^Map opts (-> {:bootstrap.servers servers
                         :group.id          group-id}
                        (merge defaults options)
@@ -101,9 +97,7 @@
          consumer    (org.apache.kafka.clients.consumer.KafkaConsumer. opts)
          retry-id    (AtomicLong. Long/MIN_VALUE)
          out-chan    (channels/chan 1)
-         commit-chan (channels/chan)
-         close-chans #(do (ca/close! out-chan)
-                          (ca/close! commit-chan))]
+         commit-chan (channels/chan)]
      (when-let [topics (not-empty topics)]
        (.subscribe consumer (ArrayList. ^Collection topics))
 
@@ -127,18 +121,17 @@
                              (map count)
                              (apply + polled))))
 
-             :else
-             (future ;; don't block here
-               (close-chans)
-               (.close consumer)))))
+             :else (consumed! polled))))
 
        {:out-chan    out-chan
         ;:commit-chan commit-chan
         :commit!     (partial ca/put! commit-chan :kafka/commit)
         :destroy!    (fn []
+                       (ca/close! commit-chan)
                        ;; final sync commit (safety hook per the book)
                        (.commitSync consumer)
-                       (.close consumer))}
+                       (.close consumer)
+                       (ca/close! out-chan))}
        ))))
 
 (comment
