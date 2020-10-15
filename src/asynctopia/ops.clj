@@ -48,9 +48,8 @@
    (ca/thread
      (->> (repeatedly (partial ca/<!! ch))
           (take-while some?)
-          (run! (fn [_ x]
-                  (try (f (null/restoring x))
-                       (catch Throwable t (error! t))))))
+          (run! #(try (f (null/restoring %))
+                      (catch Throwable t (error! t)))))
      (done!))))
 
 (def drain!
