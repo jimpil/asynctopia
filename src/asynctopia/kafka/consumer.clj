@@ -42,7 +42,7 @@
   {:topic ({:timestamp xxx :message \"some kafka message\"})}
   ```
   "
-  [^org.apache.kafka.clients.consumer.ConsumerRecords records edn-readers ]
+  [^org.apache.kafka.clients.consumer.ConsumerRecords records edn-readers]
   (->> records
        (map (partial consumer-record->map edn-readers))
        (group-by :topic)
@@ -55,8 +55,8 @@
   [^org.apache.kafka.clients.consumer.KafkaConsumer consumer
    ^AtomicLong id]
   (let [commit-id (.incrementAndGet id)]
-    (proxy [OffsetCommitCallback] []
-      (onComplete [offsets m exception]
+    (reify OffsetCommitCallback
+      (onComplete [this offsets exception]
         ;; retrying only if no other commit incremented the global counter
         (when (and (some? exception)
                    (= commit-id (.get id)))
@@ -110,7 +110,7 @@
          (let [records (try (.poll consumer (Duration/ofMillis 1))
                             (catch Exception _ :kafka/error))
                proceed? (not= :kafka/error records)
-               topic->events (when proceed? (group-by-topic records (:edn-readers options)))]
+               topic->events (when proceed? (group-by-topic records {:readers (:edn-readers options {})}))]
            (cond
              ;; nothing to consume
              (and proceed? (empty? topic->events))

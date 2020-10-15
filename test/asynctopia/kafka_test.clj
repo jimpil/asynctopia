@@ -1,16 +1,19 @@
 (ns asynctopia.kafka-test
   (:require [clojure.test :refer :all]
             [asynctopia.kafka
+             [admin :as kadmin]
              [consumer :as kconsumer]
              [producer :as kproducer]]
             [clojure.core.async :as ca]
+            [clojure.java.shell :as os]
             [asynctopia.channels :as channels]
-            [asynctopia.core :as c]))
+            [asynctopia.core :as c]
+            [asynctopia.util :as ut]))
 
 (defn- generate-event!
   [topics i]
   {:topic (rand-nth topics)
-   :key  i
+   :key   (str i)
    :event {:transaction ::whatever}})
 
 (defn- process-topics!
@@ -21,9 +24,26 @@
       (println "Processed" (count events) "events for topic" topic))
     topic->events))
 
+(defn- init-cluster!
+  []
+  (if-let [kafka-home (System/getenv "KAFKA_HOME")]
+    (let[{:keys [out exit err]}
+         (os/sh (str kafka-home "bin/zookeeper-server-start.sh")
+                (str kafka-home "config/zookeeper.properties"))
+         _ (println (or err out))
+         {:keys [out exit err]}
+         (os/sh (str kafka-home "bin/kafka-server-start.sh")
+                (str kafka-home "config/server.properties"))
+         _ (println (or err out))]
+      ::done)
+    (throw (IllegalStateException. "$KAFKA_HOME not set!"))))
+
 (deftest producer-consumer
-  (let [topics ["fiserv" "chase" "omnipay"]
-        topic-processor (agent {})
+  (let [;_ (init-cluster!)
+        admin (kadmin/admin-client)
+        topics ["fiserv" "chase" "omnipay"]
+        _ (kadmin/create-topics admin topics)
+        topic-processor (agent {} :error-handler ut/println-error-handler)
         stop? (atom false)
         data-in (channels/generator-chan (partial generate-event! topics)
                                          (partial rand-int 50)
@@ -43,16 +63,16 @@
                   (fn [state]
                     (doall (process-topics! topic->messages))
                     (commit!) ;; commit as soon as consumed
-                    (update-in state
-                               [:summary :processed] (fnil + 0)
+                    (apply update-in state
+                               [:summary :processed] (fnil + 0 0)
                                (map count (vals topic->messages))))))
       out-chan)
 
-    (Thread/sleep 10000)
+    (Thread/sleep 25000)
     (reset! stop? true)
-    (Thread/sleep 100)
-    ;(is )
-
+    (Thread/sleep 500)
+    (is (< 700 (get-in @topic-processor [:summary :processed])))
+    (.close admin)
     )
 
   )
