@@ -20,7 +20,7 @@
   [topic->events]
   (pmap
     (fn [[topic events]]
-      (Thread/sleep (rand-int 5000))
+      (Thread/sleep (rand-int 2000))
       (println "Processed" (count events) "events for topic" topic))
     topic->events))
 
@@ -46,11 +46,17 @@
         _ (kadmin/create-topics admin topics)
         topic-processor (agent {} :error-handler ut/println-error-handler)
         stop? (atom false)
+        total (promise)
         data-in (channels/generator-chan (partial generate-event! topics)
                                          (partial rand-int 50)
                                          (count topics))
         in-chan (kproducer/edn-producer)
-        {:keys [out-chan commit! destroy!]} (kconsumer/edn-consumer topics)]
+        {:keys [out-chan commit! destroy!]} (kconsumer/edn-consumer "localhost:9092"
+                                                                    "local-consumer-group"
+                                                                    topics
+                                                                    nil
+                                                                    500
+                                                                    (partial deliver total))]
     (ca/go-loop []
       (if-some [v (when-not @stop? (ca/<! data-in))]
         (when (ca/>! in-chan v)
@@ -72,8 +78,8 @@
 
     (Thread/sleep 25000)
     (reset! stop? true)
-    (Thread/sleep 1000)
-    (is (pos? (get-in @topic-processor [:summary :processed])))
+    (Thread/sleep 2000)
+    (is (= @total (get-in @topic-processor [:summary :processed])))
     (.close admin)
     (os/sh "sh" (str kafka-home "bin/kafka-server-stop.sh"))
     (Thread/sleep 1000)
