@@ -46,7 +46,7 @@
    (sink-with!! f ch error! (constantly nil)))
   ([f ch error! done!]
    (ca/thread
-     (->> (repeatedly (partial ca/<! ch))
+     (->> (repeatedly (partial ca/<!! ch))
           (take-while some?)
           (run! (fn [_ x]
                   (try (f (null/restoring x))
