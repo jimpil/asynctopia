@@ -20,26 +20,27 @@
   [topic->events]
   (pmap
     (fn [[topic events]]
-      (Thread/sleep (rand-int 1000))
+      (Thread/sleep (rand-int 5000))
       (println "Processed" (count events) "events for topic" topic))
     topic->events))
 
 (defn- init-cluster!
   []
   (if-let [kafka-home (System/getenv "KAFKA_HOME")]
-    (let[{:keys [out exit err]}
-         (os/sh (str kafka-home "bin/zookeeper-server-start.sh")
-                (str kafka-home "config/zookeeper.properties"))
-         _ (println (or err out))
-         {:keys [out exit err]}
-         (os/sh (str kafka-home "bin/kafka-server-start.sh")
-                (str kafka-home "config/server.properties"))
-         _ (println (or err out))]
-      ::done)
+    [kafka-home
+     (future
+       (os/sh "sh"
+              (str kafka-home "bin/zookeeper-server-start.sh")
+              (str kafka-home "config/zookeeper.properties")))
+     (future
+       (os/sh "sh"
+              (str kafka-home "bin/kafka-server-start.sh")
+              (str kafka-home "config/server.properties")))]
     (throw (IllegalStateException. "$KAFKA_HOME not set!"))))
 
 (deftest producer-consumer
-  (let [;_ (init-cluster!)
+  (let [[kafka-home & background-services] (init-cluster!) ;; 2 futures
+        _ (Thread/sleep 5000)
         admin (kadmin/admin-client)
         topics ["fiserv" "chase" "omnipay"]
         _ (kadmin/create-topics admin topics)
@@ -54,7 +55,8 @@
       (if-some [v (when-not @stop? (ca/<! data-in))]
         (when (ca/>! in-chan v)
           (recur))
-        (destroy!)))
+        (do (destroy!)
+            (ca/close! in-chan))))
 
     (c/consuming-with
       (fn [topic->messages]
@@ -70,9 +72,15 @@
 
     (Thread/sleep 25000)
     (reset! stop? true)
-    (Thread/sleep 500)
-    (is (< 700 (get-in @topic-processor [:summary :processed])))
+    (Thread/sleep 1000)
+    (is (pos? (get-in @topic-processor [:summary :processed])))
     (.close admin)
+    (os/sh "sh" (str kafka-home "bin/kafka-server-stop.sh"))
+    (Thread/sleep 1000)
+    (os/sh "sh" (str kafka-home "bin/zookeeper-server-stop.sh"))
+    (os/sh "rm" "-rf" "/tmp/kafka-logs" "/tmp/zookeeper")
+
+    ;(run! future-cancel background-services)
     )
 
   )

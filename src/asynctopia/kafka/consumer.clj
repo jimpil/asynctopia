@@ -62,6 +62,14 @@
                    (= commit-id (.get id)))
           (.commitAsync consumer this))))))
 
+(defn count-events
+  [so-far m]
+  (if (nil? m)
+    so-far
+    (->> (vals m)
+       (map count)
+       (apply + so-far))))
+
 (defn edn-consumer
   "Creates a Kafka Consumer client with a core.async interface given the broker's list and group id.
  After the Java Kafka consumer is created it's saved in the `consumers` atom with the following format:
@@ -122,13 +130,11 @@
                   (ca/<! commit-chan))            ;; park waiting for the commit signal (any truthy value)
              (do (->> (async-retry-callback consumer retry-id)
                       (.commitAsync consumer))    ;; commit to kafka
-                 (recur (->> (vals topic->events)
-                             (map count)
-                             (apply + polled))))
+                 (recur (count-events polled topic->events)))
 
              :else
              (future ;; don't block here
-               (polled! polled)
+               (polled! (count-events polled topic->events))
                ;; just in case .poll() threw something other than "already closed"
                ;; might itself throw if consumer is already closed
                (.close consumer)))))
