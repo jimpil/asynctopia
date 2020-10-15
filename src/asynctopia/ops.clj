@@ -20,16 +20,16 @@
                       error!)
        (ca/pipe from))) ;; returns the `to` channel (2nd arg)
 
-(defn sink-with
+(defn sink-with!
   "Generic sinking `go-loop`. Fully consumes
    channel <ch>, passing the taken values through
    <f> (presumably side-effecting, ideally non-blocking).
    Errors thrown by <f> are handled with <error!>
    (defaults to simply printing the error message)."
   ([f ch]
-   (sink-with f ch ut/println-error-handler))
+   (sink-with! f ch ut/println-error-handler))
   ([f ch error!]
-   (sink-with f ch error! (constantly nil)))
+   (sink-with! f ch error! (constantly nil)))
   ([f ch error! done!]
    (ca/go-loop []
      (if-some [x (ca/<! ch)]
@@ -38,11 +38,26 @@
            (recur))
        (done!)))))
 
-(def drain
+(defn sink-with!!
+  "Like `sink-with!`, but uses `ca/thread` (as opposed to `go`)."
+  ([f ch]
+   (sink-with!! f ch ut/println-error-handler))
+  ([f ch error!]
+   (sink-with!! f ch error! (constantly nil)))
+  ([f ch error! done!]
+   (ca/thread
+     (->> (repeatedly (partial ca/<! ch))
+          (take-while some?)
+          (run! (fn [_ x]
+                  (try (f (null/restoring x))
+                       (catch Throwable t (error! t))))))
+     (done!))))
+
+(def drain!
   "Fully consumes a channel disregarding its contents.
    Useful against a piped `to` channel that uses a
    transducer (see `core/consuming-with`)."
-  (partial sink-with identity))
+  (partial sink-with! identity))
 
 (defmacro <!?deliver
   "Takes from channel <ch> and delivers the value to promise <p>.

@@ -61,9 +61,9 @@
                             :buffer buffer)
              (ca/split error?))]
     ;; main consuming loop
-    (ops/drain values-chan)
+    (ops/drain! values-chan)
     ;; error handling loop (if a nested error occurs swallow it)
-    (ops/sink-with error! errors-chan identity)))
+    (ops/sink-with! error! errors-chan identity)))
 
 (defn mix-with
   "Creates a `mix` against <out-chan>, adds all <in-chans> to it,
@@ -75,7 +75,7 @@
   ([f out-chan in-chans error!]
    (let [mixer (ca/mix out-chan)]
      (doseq [in in-chans] (ca/admix mixer in))
-     (ops/sink-with f out-chan error!)
+     (ops/sink-with! f out-chan error!)
      mixer)))
 
 (defn pkeep

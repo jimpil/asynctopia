@@ -52,9 +52,9 @@
          producer (org.apache.kafka.clients.producer.KafkaProducer. opts)
          in-chan  (channels/chan buf-or-n (map ->producer-record) error!)]
      ;; start the go-loop and wait/park for inputs
-     (ops/sink-with #(.send producer %)
-                    in-chan
-                    error!
-                    #(future (.close producer))) ;; don't block here
+     (ops/sink-with! #(.send producer %)
+                     in-chan
+                     error!
+                     #(future (.close producer))) ;; don't block here
      in-chan)))
 
