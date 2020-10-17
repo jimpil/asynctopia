@@ -2,13 +2,14 @@
   (:require [asynctopia.channels :as channels]
             [asynctopia.ops :as ops]
             [asynctopia.util :as ut]
-            [clojure.walk :as walk]
             [clojure.string :as str])
   (:import (java.util Map)))
 
 (try
-  (import org.apache.kafka.clients.producer.KafkaProducer)
-  (import org.apache.kafka.clients.producer.ProducerRecord)
+  (import [org.apache.kafka.clients.producer
+           KafkaProducer
+           ProducerRecord])
+  (require 'asynctopia.kafka.edn)
   (catch Exception _
     (throw
       (IllegalStateException.
@@ -19,8 +20,8 @@
    :linger.ms          "1"
    :max.block.ms       "1"
    :buffer.memory      "5242880" ;; 5MB
-   :key.serializer     "org.apache.kafka.common.serialization.StringSerializer"
-   :value.serializer   "org.apache.kafka.common.serialization.StringSerializer"
+   :key.serializer     "asynctopia.kafka.edn.EdnSerializer"
+   :value.serializer   "asynctopia.kafka.edn.EdnSerializer"
    :enable.idempotence true ;; 'exactly-once' delivery semantics
    ;; not needed for idempotent producers
    ;:retries "0"
@@ -31,7 +32,7 @@
   "Converts a map into a Kafka Producer Record.
   The map should contain [:topic :key :event]."
   [{:keys [topic key event]}]
-  (org.apache.kafka.clients.producer.ProducerRecord. topic key (pr-str event)))
+  (org.apache.kafka.clients.producer.ProducerRecord. topic key event))
 
 (defn edn-producer
   "Creates a Kafka Producer, an input-channel (per buf-or-n/error!),
@@ -47,7 +48,7 @@
          ^Map opts (-> {:bootstrap.servers servers-str
                         :client.id         client-id}
                        (merge defaults options)
-                       walk/stringify-keys)
+                       ut/stringify-keys-1)
          error!   (get opts "error!" ut/println-error-handler)
          producer (org.apache.kafka.clients.producer.KafkaProducer. opts)
          in-chan  (channels/chan buf-or-n (map ->producer-record) error!)]

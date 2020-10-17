@@ -29,3 +29,6 @@
 
 (defn uuid-str []
   (str (UUID/randomUUID)))
+
+(defn stringify-keys-1 [m]
+  (into {} (map (fn [[k v]] [(name k) v])) m))

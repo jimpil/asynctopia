@@ -1,11 +1,10 @@
 (ns asynctopia.kafka.admin
   (:require [clojure.string :as str]
             [clojure.walk :as walk])
-  (:import (java.util Map Collection OptionalInt Optional)))
+  (:import (java.util Map Collection Optional)))
 
 (try
-  (import org.apache.kafka.clients.admin.AdminClient)
-  (import org.apache.kafka.clients.admin.NewTopic)
+  (import [org.apache.kafka.clients.admin AdminClient NewTopic])
   (catch Exception _
     (throw
       (IllegalStateException.

@@ -13,7 +13,7 @@
 (defn- generate-event!
   [topics i]
   {:topic (rand-nth topics)
-   :key   (str i)
+   :key   i
    :event {:transaction ::whatever}})
 
 (defn- process-topics!
@@ -50,13 +50,20 @@
         data-in (channels/generator-chan (partial generate-event! topics)
                                          (partial rand-int 50)
                                          (count topics))
-        in-chan (kproducer/edn-producer)
-        {:keys [out-chan commit! destroy!]} (kconsumer/edn-consumer "localhost:9092"
-                                                                    "local-consumer-group"
-                                                                    topics
-                                                                    nil
-                                                                    500
-                                                                    (partial deliver total))]
+        in-chan (kproducer/edn-producer
+                  "localhost:9092"
+                  "local-producer"
+                  1024
+                  {:key.serializer "org.apache.kafka.common.serialization.LongSerializer"})
+        {:keys [out-chan
+                commit!
+                destroy!]} (kconsumer/edn-consumer
+                             "localhost:9092"
+                             "local-consumer-group"
+                             topics
+                             {:key.deserializer "org.apache.kafka.common.serialization.LongDeserializer"}
+                             500
+                             (partial deliver total))]
     (ca/go-loop []
       (if-some [v (when-not @stop? (ca/<! data-in))]
         (when (ca/>! in-chan v)

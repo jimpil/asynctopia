@@ -2,18 +2,19 @@
   (:require [clojure.core.async :as ca]
             [asynctopia.channels :as channels]
             [asynctopia.core :as c]
-            [clojure.walk :as walk]
-            [clojure.edn :as edn]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [asynctopia.util :as ut])
   (:import (java.util Map ArrayList Collection)
            (java.time Duration Instant)
            (org.apache.kafka.clients.consumer OffsetCommitCallback)
            (java.util.concurrent.atomic AtomicLong)))
 
 (try
-  (import org.apache.kafka.clients.consumer.KafkaConsumer)
-  (import org.apache.kafka.clients.consumer.ConsumerRecord)
-  (import org.apache.kafka.clients.consumer.ConsumerRecords)
+  (import [org.apache.kafka.clients.consumer
+           KafkaConsumer
+           ConsumerRecord
+           ConsumerRecords])
+  (require 'asynctopia.kafka.edn)
   (catch Exception _
     (throw
       (IllegalStateException.
@@ -21,18 +22,19 @@
 
 (def defaults
   {:enable.auto.commit  "false"
-   :session.timeout.ms "30000"
-   :key.deserializer   "org.apache.kafka.common.serialization.StringDeserializer"
-   :value.deserializer "org.apache.kafka.common.serialization.StringDeserializer"
+   :session.timeout.ms  "30000"
+   :key.deserializer    "asynctopia.kafka.edn.EdnDeserializer"
+   :value.deserializer  "asynctopia.kafka.edn.EdnDeserializer"
    })
 
 (defn consumer-record->map
-  [edn-readers ^org.apache.kafka.clients.consumer.ConsumerRecord r]
-  {:topic     (.topic r)
+  [^org.apache.kafka.clients.consumer.ConsumerRecord r]
+  {:topic     (name (.topic r))
+   :key       (.key r)   ;; keyword per the (default) "key.deserializer"
+   :event     (.value r) ;; EDN value per the (default) "value.deserializer"
    :partition (.partition r)
    :offset    (.offset r)
-   :timestamp (Instant/ofEpochMilli (.timestamp r))
-   :event     (edn/read-string edn-readers (.value r))})
+   :timestamp (Instant/ofEpochMilli (.timestamp r))})
 
 (defn group-by-topic
   "Higher order function that receives a set of consumer records and returns a function that expects a topic.
@@ -42,11 +44,10 @@
   {:topic ({:timestamp xxx :message \"some kafka message\"})}
   ```
   "
-  [^org.apache.kafka.clients.consumer.ConsumerRecords records edn-readers]
+  [^org.apache.kafka.clients.consumer.ConsumerRecords records]
   (->> records
-       (map (partial consumer-record->map edn-readers))
-       (group-by :topic)
-       walk/keywordize-keys))
+       (map consumer-record->map)
+       (group-by :topic)))
 
 (defn async-retry-callback
   "Per the book 'Kafka - The Definitive Guide'
@@ -102,11 +103,12 @@
    (edn-consumer servers group-id topics options empty-interval (partial println "Total:")))
   ([servers group-id topics options empty-interval polled!]
    (let [servers-str (if (string? servers) servers (str/join \, servers))
+         des-opts-kw :edn.deserializer.opts
          ^Map opts (-> {:bootstrap.servers servers-str
                         :group.id          group-id
                         :client.id         "local-consumer"}
-                       (merge defaults (dissoc options :edn-readers))
-                       walk/stringify-keys)
+                       (merge defaults options)
+                       ut/stringify-keys-1)
          consumer    (org.apache.kafka.clients.consumer.KafkaConsumer. opts)
          retry-id    (AtomicLong. Long/MIN_VALUE)
          out-chan    (channels/chan 1)
@@ -118,7 +120,7 @@
          (let [records (try (.poll consumer (Duration/ofMillis 1))
                             (catch Exception _ :kafka/error))
                proceed? (not= :kafka/error records)
-               topic->events (when proceed? (group-by-topic records {:readers (:edn-readers options {})}))]
+               topic->events (when proceed? (group-by-topic records))]
            (cond
              ;; nothing to consume
              (and proceed? (empty? topic->events))
