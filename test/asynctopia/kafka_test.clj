@@ -13,8 +13,9 @@
 (defn- generate-event!
   [topics i]
   {:topic (rand-nth topics)
-   :key   i
-   :event {:transaction ::whatever}})
+   :key "requests"
+   :event {:uuid (ut/uuid-str)
+           :transaction ::whatever}})
 
 (defn- process-topics!
   [topic->events]
@@ -54,6 +55,7 @@
                   "localhost:9092"
                   "local-producer"
                   1024
+                  nil
                   {:key.serializer "org.apache.kafka.common.serialization.LongSerializer"})
         {:keys [out-chan
                 commit!

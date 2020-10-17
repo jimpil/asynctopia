@@ -43,7 +43,11 @@
    (edn-producer "localhost:9092" "local-producer"))
   ([servers client-id]
    (edn-producer servers client-id 1024 nil))
-  ([servers client-id buf-or-n options]
+  ([servers client-id buf-or-n]
+   (edn-producer servers client-id buf-or-n nil))
+  ([servers client-id buf-or-n xform]
+   (edn-producer servers client-id buf-or-n xform nil))
+  ([servers client-id buf-or-n xform options]
    (let [servers-str (if (string? servers) servers (str/join \, servers))
          ^Map opts (-> {:bootstrap.servers servers-str
                         :client.id         client-id}
@@ -51,7 +55,10 @@
                        ut/stringify-keys-1)
          error!   (get opts "error!" ut/println-error-handler)
          producer (org.apache.kafka.clients.producer.KafkaProducer. opts)
-         in-chan  (channels/chan buf-or-n (map ->producer-record) error!)]
+         in-chan  (channels/chan buf-or-n
+                                 (cond->> (map ->producer-record)
+                                          xform (comp xform))
+                                 error!)]
      ;; start the go-loop and wait/park for inputs
      (ops/sink-with! #(.send producer %)
                      in-chan
