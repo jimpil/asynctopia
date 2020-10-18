@@ -5,6 +5,7 @@
             :url "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.10.1" :scope "provided"]
                  [org.clojure/core.async "1.3.610"]
+                 [org.clojure/core.cache "1.0.207"]
                  [clambda "0.1.5"]]
   :profiles {:dev {:dependencies
                    [[org.apache.kafka/kafka_2.13 "2.6.0"]

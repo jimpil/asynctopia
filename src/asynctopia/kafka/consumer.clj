@@ -36,7 +36,7 @@
    :offset    (.offset r)
    :timestamp (Instant/ofEpochMilli (.timestamp r))})
 
-(defn group-by-topic
+(defn group-records-by
   "Higher order function that receives a set of consumer records and returns a function that expects a topic.
   The purpose of this returned function is to map each record in the set to a the topic passed as argument.
   The follwing data structure is returned:
@@ -44,10 +44,10 @@
   {:topic ({:timestamp xxx :message \"some kafka message\"})}
   ```
   "
-  [^org.apache.kafka.clients.consumer.ConsumerRecords records]
+  [by ^org.apache.kafka.clients.consumer.ConsumerRecords records]
   (->> records
        (map consumer-record->map)
-       (group-by :topic)))
+       (group-by by)))
 
 (defn async-retry-callback
   "Per the book 'Kafka - The Definitive Guide'
@@ -103,7 +103,6 @@
    (edn-consumer servers group-id topics options empty-interval (partial println "Total:")))
   ([servers group-id topics options empty-interval polled!]
    (let [servers-str (if (string? servers) servers (str/join \, servers))
-         des-opts-kw :edn.deserializer.opts
          ^Map opts (-> {:bootstrap.servers servers-str
                         :group.id          group-id
                         :client.id         "local-consumer"}
@@ -112,31 +111,35 @@
          consumer    (org.apache.kafka.clients.consumer.KafkaConsumer. opts)
          retry-id    (AtomicLong. Long/MIN_VALUE)
          out-chan    (channels/chan 1)
-         commit-chan (channels/chan)]
-     (when-let [topics (not-empty topics)]
+         commit-chan (channels/chan)
+         ntopics     (count topics)
+         single-topic? (= 1 ntopics)
+         grouping-fn (if single-topic? :key :topic)]
+     (when (pos? ntopics)
        (.subscribe consumer (ArrayList. ^Collection topics))
 
        (ca/go-loop [polled 0]
          (let [records (try (.poll consumer (Duration/ofMillis 1))
                             (catch Exception _ :kafka/error))
                proceed? (not= :kafka/error records)
-               topic->events (when proceed? (group-by-topic records))]
+               grouped-events (when proceed?
+                                (group-records-by grouping-fn records))]
            (cond
              ;; nothing to consume
-             (and proceed? (empty? topic->events))
+             (and proceed? (empty? grouped-events))
              (do (ca/<! (ca/timeout empty-interval))
                  (recur polled))   ;; check again later
              ;; something to consume
              (and proceed?
-                  (ca/>! out-chan topic->events)  ;; put it in (always room for 1)
+                  (ca/>! out-chan grouped-events)  ;; put it in (always room for 1)
                   (ca/<! commit-chan))            ;; park waiting for the commit signal (any truthy value)
              (do (->> (async-retry-callback consumer retry-id)
                       (.commitAsync consumer))    ;; commit to kafka
-                 (recur (count-events polled topic->events)))
+                 (recur (count-events polled grouped-events)))
 
              :else
              (future ;; don't block here
-               (polled! (count-events polled topic->events))
+               (polled! (count-events polled grouped-events))
                ;; just in case .poll() threw something other than "already closed"
                ;; might itself throw if consumer is already closed
                (.close consumer)))))
