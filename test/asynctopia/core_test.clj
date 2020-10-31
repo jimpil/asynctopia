@@ -96,12 +96,12 @@
     (let [fixed-chan    (channels/chan 10)
           dropping-chan (channels/chan [:buffer/dropping 10])
           sliding-chan  (channels/chan [:buffer/sliding 10])]
-      (is (instance? FixedBuffer    (channel-buffer (clone-channel fixed-chan))))
-      (is (instance? DroppingBuffer (channel-buffer (clone-channel dropping-chan))))
-      (is (instance? SlidingBuffer  (channel-buffer (clone-channel sliding-chan))))
+      (is (instance? FixedBuffer (channel-buf (clone-channel fixed-chan))))
+      (is (instance? DroppingBuffer (channel-buf (clone-channel dropping-chan))))
+      (is (instance? SlidingBuffer (channel-buf (clone-channel sliding-chan))))
       ;; testing protocol extensions
       (is (instance? clojure.core.async.impl.buffers.FixedBuffer
-                     (channel-buffer (clone-channel (ca/chan 10)))))
+                     (channel-buf (clone-channel (ca/chan 10)))))
       ))
 
   (testing "snapshot-buffer"

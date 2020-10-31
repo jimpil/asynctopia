@@ -8,13 +8,19 @@
              [null :as null]]
             [clojure.core.async.impl.mutex :as mutex])
   (:import (clojure.core.async.impl.channels ManyToManyChannel)
+           (clojure.core.async.impl.buffers PromiseBuffer)
            (java.util LinkedList)))
 
-(defn channel-buffer
+(defn channel-buf
   "Returns this channel's buffer. This is a non thread-safe
    mutable object, so be careful what you do with it."
   [^ManyToManyChannel c]
   (.buf c))
+
+(defn promise-chan?
+  "Returns true if <c> was created via `promise-chan`."
+  [^ManyToManyChannel c]
+  (instance? PromiseBuffer (channel-buf c)))
 
 (defn clone-buffer
   "Returns a new/empty version of this buffer."
@@ -32,7 +38,7 @@
   (ManyToManyChannel.
     (LinkedList.)
     (LinkedList.)
-    (-> ch channel-buffer clone-buffer)
+    (-> ch channel-buf clone-buffer)
     (atom false)
     (mutex/mutex)
     (.-add_BANG_ ch)))
@@ -40,7 +46,7 @@
 (def snapshot-channel
   "Returns a seq with the (current) contents of
    this channel's buffer (per `snapshot-buffer`)."
-  (comp snapshot-buffer channel-buffer))
+  (comp snapshot-buffer channel-buf))
 
 (defn consuming-with
   "Sets up two `go` loops for consuming values VS errors
@@ -175,3 +181,31 @@
           (if (next new-futs-and-cs)
             (recur new-futs-and-cs)
             (ca/<!! (second (first new-futs-and-cs)))))))))
+
+(defn batching
+  "Takes batches of <max-count> items from <in-chan>, or however many
+   arrive by <max-time> since the last batch was output, and outputs
+   them to <out-chan>."
+  [in-chan out-chan max-time max-count]
+  (let [lim-1 (dec max-count)]
+    (ca/go-loop [buf []
+                 t (ca/timeout max-time)]
+      (let [[v p] (ca/alts! [in-chan t])]
+        (cond
+
+          (= p t) ;; timeout occurred
+          (do
+            (ca/>! out-chan buf)
+            (recur [] (ca/timeout max-time)))
+
+          (nil? v) ;; in-chan has been closed (flush)
+          (some->> (not-empty buf)
+                   (ca/>! out-chan))
+
+          (= lim-1 (count buf)) ;; reached max-count
+          (do
+            (ca/>! out-chan (conj buf v))
+            (recur [] (ca/timeout max-time)))
+
+          :else
+          (recur (conj buf v) t))))))

@@ -3,7 +3,8 @@
             [asynctopia.ops :as ops]
             [asynctopia.util :as ut]
             [clojure.string :as str])
-  (:import (java.util Map)))
+  (:import (java.util Map)
+           (org.apache.kafka.common.header Header)))
 
 (try
   (import [org.apache.kafka.clients.producer
@@ -28,11 +29,19 @@
    ;:acks "all"
    })
 
+(defn kheader
+  [[^String k ^String v]]
+  (reify Header
+    (key [_] k)
+    (value [_] (.getBytes v))))
+
 (defn ->producer-record
   "Converts a map into a Kafka Producer Record.
   The map should contain [:topic :key :event]."
-  [{:keys [topic key event]}]
-  (org.apache.kafka.clients.producer.ProducerRecord. topic key event))
+  [{:keys [^String topic key event headers] :as m}]
+  (let [kheaders (some->> (or headers (meta m)) (map kheader))]
+    (org.apache.kafka.clients.producer.ProducerRecord.
+    topic nil key event ^Iterable kheaders)))
 
 (defn edn-producer
   "Creates a Kafka Producer, an input-channel (per buf-or-n/error!),

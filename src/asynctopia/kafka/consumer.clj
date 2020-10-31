@@ -3,17 +3,19 @@
             [asynctopia.channels :as channels]
             [asynctopia.core :as c]
             [clojure.string :as str]
-            [asynctopia.util :as ut])
+            [asynctopia.util :as ut]
+            [clojure.core.protocols :as pclj]
+            [clojure.datafy :as df])
   (:import (java.util Map ArrayList Collection)
-           (java.time Duration Instant)
-           (org.apache.kafka.clients.consumer OffsetCommitCallback)
            (java.util.concurrent.atomic AtomicLong)))
 
 (try
   (import [org.apache.kafka.clients.consumer
            KafkaConsumer
            ConsumerRecord
-           ConsumerRecords])
+           ConsumerRecords
+           OffsetCommitCallback])
+  (import org.apache.kafka.common.header.Header)
   (require 'asynctopia.kafka.edn)
   (catch Exception _
     (throw
@@ -27,16 +29,25 @@
    :value.deserializer  "asynctopia.kafka.edn.EdnDeserializer"
    })
 
-(defn consumer-record->map
-  [^org.apache.kafka.clients.consumer.ConsumerRecord r]
-  {:topic     (name (.topic r))
-   :key       (.key r)   ;; keyword per the (default) "key.deserializer"
-   :event     (.value r) ;; EDN value per the (default) "value.deserializer"
-   :partition (.partition r)
-   :offset    (.offset r)
-   :timestamp (Instant/ofEpochMilli (.timestamp r))})
+(extend-protocol pclj/Datafiable
+  org.apache.kafka.common.header.Header
+  (datafy [this]
+    [(.key this)
+     (String. (.value this))])
 
-(defn group-records-by
+  org.apache.kafka.clients.consumer.ConsumerRecord
+  (datafy [this]
+    {:topic   (.topic this)
+     :key     (.key this)   ;; keyword per the (default) "key.deserializer"
+     :event   (.value this) ;; EDN value per the (default) "value.deserializer"
+     :headers (into {} (map df/datafy) (.headers this))
+     :partition (.partition this)
+     :offset  (.offset this)
+     :timestamp (.timestamp this)})
+
+  )
+
+(defn group-by-topic
   "Higher order function that receives a set of consumer records and returns a function that expects a topic.
   The purpose of this returned function is to map each record in the set to a the topic passed as argument.
   The follwing data structure is returned:
@@ -44,10 +55,10 @@
   {:topic ({:timestamp xxx :message \"some kafka message\"})}
   ```
   "
-  [by ^org.apache.kafka.clients.consumer.ConsumerRecords records]
+  [^org.apache.kafka.clients.consumer.ConsumerRecords records]
   (->> records
-       (map consumer-record->map)
-       (group-by by)))
+       (map df/datafy)
+       (group-by :topic)))
 
 (defn async-retry-callback
   "Per the book 'Kafka - The Definitive Guide'
@@ -56,7 +67,7 @@
   [^org.apache.kafka.clients.consumer.KafkaConsumer consumer
    ^AtomicLong id]
   (let [commit-id (.incrementAndGet id)]
-    (reify OffsetCommitCallback
+    (reify org.apache.kafka.clients.consumer.OffsetCommitCallback
       (onComplete [this offsets exception]
         ;; retrying only if no other commit incremented the global counter
         (when (and (some? exception)
@@ -102,28 +113,26 @@
   ([servers group-id topics options empty-interval]
    (edn-consumer servers group-id topics options empty-interval (partial println "Total:")))
   ([servers group-id topics options empty-interval polled!]
-   (let [servers-str (if (string? servers) servers (str/join \, servers))
-         ^Map opts (-> {:bootstrap.servers servers-str
-                        :group.id          group-id
-                        :client.id         "local-consumer"}
-                       (merge defaults options)
-                       ut/stringify-keys-1)
-         consumer    (org.apache.kafka.clients.consumer.KafkaConsumer. opts)
-         retry-id    (AtomicLong. Long/MIN_VALUE)
-         out-chan    (channels/chan 1)
-         commit-chan (channels/chan)
-         ntopics     (count topics)
-         single-topic? (= 1 ntopics)
-         grouping-fn (if single-topic? :key :topic)]
-     (when (pos? ntopics)
+   (when-let [topics (not-empty topics)]
+     (let [servers-str (if (string? servers)
+                         servers
+                         (str/join \, servers))
+           ^Map opts (-> {:bootstrap.servers servers-str
+                          :group.id          group-id
+                          :client.id         "local-consumer"}
+                         (merge defaults options)
+                         ut/stringify-keys-1)
+           retry-id    (AtomicLong. Long/MIN_VALUE)
+           out-chan    (channels/chan 1)
+           commit-chan (channels/chan)
+           consumer    (org.apache.kafka.clients.consumer.KafkaConsumer. opts)]
        (.subscribe consumer (ArrayList. ^Collection topics))
 
        (ca/go-loop [polled 0]
          (let [records (try (.poll consumer (Duration/ofMillis 1))
                             (catch Exception _ :kafka/error))
                proceed? (not= :kafka/error records)
-               grouped-events (when proceed?
-                                (group-records-by grouping-fn records))]
+               grouped-events (when proceed? (group-by-topic records))]
            (cond
              ;; nothing to consume
              (and proceed? (empty? grouped-events))
@@ -152,8 +161,7 @@
                        ;; final sync commit (per the book)
                        (.commitSync consumer)
                        (.close consumer)
-                       (ca/close! out-chan))}
-       ))))
+                       (ca/close! out-chan))}))))
 
 (comment
   (let [{:keys [out-chan commit!]} (edn-consumer)]
