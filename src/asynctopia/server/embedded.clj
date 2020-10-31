@@ -99,7 +99,7 @@
   ^H2ServerBootstrap
   [^H2ServerBootstrap server routes]
   (reduce-kv
-    (fn [server ^String route-pattern handler]
+    (fn [^H2ServerBootstrap server ^String route-pattern handler]
       (.register
         server
         route-pattern

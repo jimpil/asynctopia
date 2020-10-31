@@ -48,7 +48,7 @@
       (deref p timeout-ms timeout-response)))
   )
 
-(extend-type ManyToManyChannel
+#_(extend-type ManyToManyChannel
   ring.core.protocols/StreamableResponseBody
   (write-body-to-stream [this response output-stream]
     (let [out (io/output-stream output-stream)]

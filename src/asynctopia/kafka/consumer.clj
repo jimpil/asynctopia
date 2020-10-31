@@ -7,7 +7,8 @@
             [clojure.core.protocols :as pclj]
             [clojure.datafy :as df])
   (:import (java.util Map ArrayList Collection)
-           (java.util.concurrent.atomic AtomicLong)))
+           (java.util.concurrent.atomic AtomicLong)
+           (java.time Duration)))
 
 (try
   (import [org.apache.kafka.clients.consumer
