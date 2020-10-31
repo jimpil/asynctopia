@@ -79,7 +79,7 @@
       (case  (.getMethod ^HttpRequest request)
         ("GET", "DELETE", "HEAD")
         (BasicRequestConsumer. (NoopEntityConsumer.))
-        ("POST", "UPDATE", "PATCH")
+        ("POST", "PUT", "PATCH")
         (BasicRequestConsumer. (StringAsyncEntityConsumer.)))) ;; assuming text-based body (e.g JSON, EDN etc)
     (handle [this msg resp-trigger context]
       (let [{:keys [status headers body]
