@@ -19,20 +19,21 @@
            (org.apache.hc.core5.util TimeValue)
            (java.lang System$LoggerFinder System$Logger$Level)
            (org.apache.hc.core5.concurrent FutureCallback)
-           (org.apache.hc.core5.http.impl HttpProcessors)))
+           (org.apache.hc.core5.http.impl HttpProcessors)
+           (org.apache.hc.core5.http.nio.ssl TlsStrategy BasicServerTlsStrategy FixedPortStrategy)))
 
 (defn io-reactor-config
   ^IOReactorConfig
-  [{:keys [timeout timeout-unit io-threads tcp-no-delay]
-    :or {timeout 20
-         timeout-unit TimeUnit/SECONDS
-         io-threads 4
-         tcp-no-delay true}}]
-  (-> (IOReactorConfig/custom)
-      (.setSoTimeout timeout timeout-unit)
-      (.setIoThreadCount io-threads)
-      (.setTcpNoDelay tcp-no-delay)
-      .build))
+  [{:keys [timeout timeout-unit io-threads tcp-no-delay keep-alive linger-ms]
+    :or {io-threads 4
+         timeout-unit TimeUnit/SECONDS}}]
+  (cond-> (IOReactorConfig/custom)
+          timeout      (.setSoTimeout timeout timeout-unit)
+          keep-alive   (.setSoKeepAlive keep-alive)
+          linger-ms    (.setSoLinger linger-ms TimeUnit/MILLISECONDS)
+          io-threads   (.setIoThreadCount io-threads)
+          tcp-no-delay (.setTcpNoDelay tcp-no-delay)
+          true          .build))
 
 (defn- ring-req*
   [^Message msg ^HttpContext context]
@@ -109,18 +110,20 @@
 
 (defn create-server
   ^HttpAsyncServer
-  [{:keys [^String host-name ^String server-info routes]
-    :or {host-name "local-async-server"}
+  [{:keys [^String host-name ^String server-info routes ssl-context ssl-ports]
+    :or {host-name "local-async-server"
+         ssl-ports [443]}
     :as opts}]
-  (-> (H2ServerBootstrap/bootstrap)
-      (.setLookupRegistry (UriPatternMatcher.))
-      (.setVersionPolicy HttpVersionPolicy/NEGOTIATE)
-      (.setCanonicalHostName host-name)
-      (.setIOReactorConfig (io-reactor-config opts))
-      (.setExceptionCallback (reify Callback (execute [this t] (cb/log-error! t (class this)))))
-      (.setHttpProcessor (HttpProcessors/server server-info))
-      (register-routes routes)
-      .create)
+  (cond-> (H2ServerBootstrap/bootstrap)
+          true (.setLookupRegistry (UriPatternMatcher.))
+          true (.setVersionPolicy HttpVersionPolicy/NEGOTIATE)
+          true (.setCanonicalHostName host-name)
+          true (.setIOReactorConfig (io-reactor-config opts))
+          true (.setExceptionCallback (reify Callback (execute [this t] (cb/log-error! t (class this)))))
+          true (.setHttpProcessor (HttpProcessors/server server-info))
+          ssl-context (.setTlsStrategy (BasicServerTlsStrategy. ssl-context (FixedPortStrategy. (int-array ssl-ports))))
+          true (register-routes routes)
+          true .create)
   )
 
 (defn stop-listening!
