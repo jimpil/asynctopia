@@ -6,7 +6,9 @@
            (org.apache.hc.core5.http.nio AsyncEntityProducer DataStreamChannel)
            (java.nio ByteBuffer CharBuffer)
            (java.lang System$LoggerFinder System$Logger$Level)
-           (java.nio.charset StandardCharsets)))
+           (java.nio.charset StandardCharsets)
+           (clojure.lang IPending)
+           (java.io InputStream)))
 
 (declare log-error!)
 
@@ -19,10 +21,14 @@
     (string? x)
     (->> (CharBuffer/wrap ^String x)
          (.encode StandardCharsets/UTF_8))
+
+    ;(instance? InputStream x)
+    ;(-> x .readAllBytes ByteBuffer/wrap)
+
     :else
     (throw
       (IllegalStateException.
-        "Can only deal with String or byte-array chunks!"))))
+        "Can only deal with String or byte-array content!"))))
 
 (deftype ChannelContentProducer
   [^ManyToManyChannel ch promise-chan? ^String content-type ^bytes delimiter state]
@@ -79,6 +85,33 @@
       delimiter
       (some-> delimiter str .getBytes))
     (atom :READY)))
+
+(deftype PendingContentProducer
+  [^IPending p ^String content-type]
+  AsyncEntityProducer
+  (isRepeatable   [this] false)
+  (isChunked      [this] true)
+  (getContentType [this] content-type)
+  (getContentLength [this] -1)
+  (getTrailerNames [this] #{})
+  (getContentEncoding [this]
+    (when (not= content-type "application/octet-stream") "UTF-8"))
+  (failed [this exception]
+    (log-error! exception (class this))
+    (.releaseResources this))
+  (releaseResources [this])
+  (available [this] Integer/MAX_VALUE)
+  (^void produce [this ^DataStreamChannel ds]
+    (when (realized? p)
+      (->> @p byte-buffer* (.write ds))
+      (.endStream ds)))
+  )
+
+(defn ->PendingContentProducer
+  ^PendingContentProducer
+  [p & {:keys [content-type]
+        :or {content-type "application/octet-stream"}}]
+  (PendingContentProducer. p content-type))
 
 (defn log-error!
   [^Throwable t ^Class klass]

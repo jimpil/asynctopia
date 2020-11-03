@@ -11,7 +11,7 @@
            (org.apache.hc.core5.http.nio AsyncServerRequestHandler AsyncEntityProducer AsyncServerRequestHandler$ResponseTrigger)
            (org.apache.hc.core5.http.nio.support BasicRequestConsumer AsyncResponseBuilder)
            (org.apache.hc.core5.http EntityDetails Message HttpRequest HttpStatus Header EndpointDetails)
-           (org.apache.hc.core5.http.nio.entity NoopEntityConsumer BasicAsyncEntityConsumer StringAsyncEntityConsumer)
+           (org.apache.hc.core5.http.nio.entity NoopEntityConsumer BasicAsyncEntityConsumer StringAsyncEntityConsumer BasicAsyncEntityProducer)
            (org.apache.hc.core5.function Callback)
            (org.apache.hc.core5.http.impl.bootstrap HttpAsyncServer)
            (org.apache.hc.core5.io CloseMode)
@@ -20,7 +20,8 @@
            (java.lang System$LoggerFinder System$Logger$Level)
            (org.apache.hc.core5.concurrent FutureCallback)
            (org.apache.hc.core5.http.impl HttpProcessors)
-           (org.apache.hc.core5.http.nio.ssl TlsStrategy BasicServerTlsStrategy FixedPortStrategy)))
+           (org.apache.hc.core5.http.nio.ssl TlsStrategy BasicServerTlsStrategy FixedPortStrategy)
+           (clojure.lang IPending)))
 
 (defn io-reactor-config
   ^IOReactorConfig
@@ -85,14 +86,26 @@
     (handle [this msg resp-trigger context]
       (let [{:keys [status headers body]
              :or {status 200}} (handler (ring-req* msg context))
-            resp-builder (cond-> (AsyncResponseBuilder/create status)
-                                 (ut/chan? body) (.setEntity (cb/->ChannelContentProducer body))
-                                 (string? body)  (.setEntity ^String body)
-                                 (seq headers)   (.setHeaders (into-array Header (map->headers headers)))
-                                 true .build)]
+            ^AsyncEntityProducer content-producer
+            (cond
+              (ut/chan? body)
+              (cb/->ChannelContentProducer body)
+
+              (instance? IPending body)
+              (cb/->PendingContentProducer body)
+
+              (string? body)
+              (BasicAsyncEntityProducer. ^String body)
+
+              (bytes? body)
+              (BasicAsyncEntityProducer. ^bytes body))
+            resp-producer (cond-> (AsyncResponseBuilder/create status)
+                                  true (.setEntity content-producer)
+                                  (seq headers) (.setHeaders (into-array Header (map->headers headers)))
+                                  true .build)]
         (.submitResponse
           ^AsyncServerRequestHandler$ResponseTrigger
-          resp-trigger resp-builder context)))
+          resp-trigger resp-producer context)))
     )
   )
 
