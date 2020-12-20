@@ -124,9 +124,12 @@
         sub-chans (map
                     (fn [[topic {:keys [process! error? error! to-error nconsumers]}]]
                       (let [topic-processor (topic-fn* topic multi-process! process!)
-                            topic-error?    (topic-fn* topic multi-error? error?)
-                            topic-error!    (topic-fn* topic multi-error! error!)
-                            topic-to-error  (topic-fn* topic multi-to-error to-error)
+                            topic-error? (or (topic-fn* topic multi-error? error?)
+                                             ut/throwable?)
+                            topic-error! (or (topic-fn* topic multi-error! error!)
+                                             ut/println-error-handler)
+                            topic-to-error (or (topic-fn* topic multi-to-error to-error)
+                                               identity)
                             topic-buffer    (topic->buffer topic)
                             nconsumers (if (fn? multi-nconsumers)
                                          (multi-nconsumers topic)
@@ -151,18 +154,19 @@
                             topic-processor
                             sub-chan
                             :buffer   (long per-consumer)
-                            :error?   (or topic-error? ut/throwable?)
-                            :error!   (or topic-error! ut/println-error-handler)
-                            :to-error (or topic-to-error identity)))
+                            :error?   topic-error?
+                            :error!   topic-error!
+                            :to-error topic-to-error))
                         sub-chan))
                     topic-config)]
-    [pb in (doall sub-chans)]))
+    [in pb (doall sub-chans)]))
 
 (defn unpub-sub!
   "Unsubscribes everything from <pb> (a publication),
-   after closing <pb-in-chan> (its input channel)."
-  [pb pb-in-chan & _]
-  (ca/close! pb-in-chan)
+   after closing <pb-in-chan> (its input channel).
+   Expects the result of `pub-sub!`."
+  [[pb-in pb _]]
+  (ca/close! pb-in)
   (ca/unsub-all pb))
 
 ;; TODO add config specs
