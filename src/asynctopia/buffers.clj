@@ -35,7 +35,7 @@
 
   proto/ISnapshot
   (snapshot [this] ;; NOT thread-safe!
-    (ut/snapshot-java-collection buf))
+    (ut/snapshot-buffer buf))
   )
 
 
@@ -73,7 +73,7 @@
 
   proto/ISnapshot
   (snapshot [this] ;; NOT thread-safe!
-    (ut/snapshot-java-collection buf))
+    (ut/snapshot-buffer buf))
   )
 
 (defn dropping-buffer
@@ -113,7 +113,7 @@
 
   proto/ISnapshot
   (snapshot [this] ;; NOT thread-safe!
-    (ut/snapshot-java-collection buf))
+    (ut/snapshot-buffer buf))
   )
 
 (defn sliding-buffer
@@ -157,7 +157,7 @@
 
   proto/ISnapshot
   (snapshot [this]
-    (ut/snapshot-java-collection buf))
+    (ut/snapshot-buffer buf))
   )
 
 (defn ts-fixed-buffer
@@ -194,7 +194,7 @@
 
   proto/ISnapshot
   (snapshot [this]
-    (ut/snapshot-java-collection buf)))
+    (ut/snapshot-buffer buf)))
 
 (defn ts-dropping-buffer
   "Dropping buffer backed by a `ConcurrentLinkedDeque`."
@@ -234,7 +234,7 @@
 
   proto/ISnapshot
   (snapshot [this]
-    (ut/snapshot-java-collection buf)))
+    (ut/snapshot-buffer buf)))
 
 (defn ts-sliding-buffer
   "Sliding buffer backed by a `ConcurrentLinkedDeque`."
@@ -279,9 +279,10 @@
   "Drop-in replacement for `clojure.async.core/chan`, supporting
    any `Deque` buffer (not just `LinkedList`). This can be achieved
    either by pre-building the buffer via the `asynctopia.buffers` ns,
-   or by providing <buf-or-n> as a vector of three elements (`[variant n dq]`
+   or by providing <buf-or-n> as a vector of four elements (`[variant n dq react!]`
    where <variant> is one of :fixed/:dropping/:sliding),
-   and <dq> an instance of `java.util.Deque` (defaults to `ArrayDeque`)."
+   <dq> an instance of `java.util.Deque` (defaults to `ArrayDeque`),
+   and <react!> a a fn of one argument (the dropped element)."
   ([]
    (chan* nil))
   ([buf-or-n]

@@ -28,7 +28,7 @@
   "Drop-in replacement for `ca/onto-chan!!`, with a more flexible 3rd
    argument - allowing for a function which will be called with <ch>
    when <coll> is exhausted (defaults to `ca/close` which is effectively
-   the same as `true`).It is also nil-safe (see the `asynctopia.null` convention),
+   the same as `true`). It is also nil-safe (see the `asynctopia.null` convention),
    and reducible-friendly (i.e. <coll> can be something implementing `IReduceInit`)."
   ([ch coll]
    (onto-chan!! ch coll true))
@@ -260,9 +260,3 @@
    (throttled-chan c rate unit 1))
   ([c rate unit bucket-size]
    ((chan-throttler rate unit bucket-size) c)))
-
-
-
-
-
-

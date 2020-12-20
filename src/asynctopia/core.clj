@@ -17,11 +17,6 @@
   [^ManyToManyChannel c]
   (.buf c))
 
-(defn promise-chan?
-  "Returns true if <c> was created via `promise-chan`."
-  [^ManyToManyChannel c]
-  (instance? PromiseBuffer (channel-buf c)))
-
 (defn clone-buffer
   "Returns a new/empty version of this buffer."
   [b]
@@ -44,9 +39,14 @@
     (.-add_BANG_ ch)))
 
 (def snapshot-channel
-  "Returns a seq with the (current) contents of
+  "Returns a vector with the (current) contents of
    this channel's buffer (per `snapshot-buffer`)."
   (comp snapshot-buffer channel-buf))
+
+(defn promise-chan?
+  "Returns true if <c> was created via `promise-chan`."
+  [^ManyToManyChannel c]
+  (instance? PromiseBuffer (channel-buf c)))
 
 (defn consuming-with
   "Sets up two `go` loops for consuming values VS errors
@@ -102,7 +102,7 @@
         in-chan  (if channel-input?
                    input
                    (if (ut/reducible? input)
-                     (doto (channels/chan 128)
+                     (doto (channels/chan 100)
                        (channels/onto-chan!! input))
                      (to-chan* input)))
         out-chan (channels/chan buffer)]

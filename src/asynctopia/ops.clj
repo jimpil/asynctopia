@@ -60,7 +60,7 @@
 
 (defmacro <!?deliver
   "Takes from channel <ch> and delivers the value to promise <p>.
-   If the value is ::nil delivers nil."
+   If the value is :null/nil delivers nil."
   [ch p]
   `(deliver ~p (null/restoring (ca/<! ~ch))))
 

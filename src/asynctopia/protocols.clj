@@ -33,13 +33,13 @@
   ;; NOT thread-safe buffers - be extra careful!
   FixedBuffer
   (snapshot [b]
-    (ut/snapshot-java-collection (.buf b)))
+    (ut/snapshot-buffer (.buf b)))
   DroppingBuffer
   (snapshot [b]
-    (ut/snapshot-java-collection (.buf b)))
+    (ut/snapshot-buffer (.buf b)))
   SlidingBuffer
   (snapshot [b]
-    (ut/snapshot-java-collection (.buf b)))
+    (ut/snapshot-buffer (.buf b)))
   PromiseBuffer
   (snapshot [b]
     [(.val b)])

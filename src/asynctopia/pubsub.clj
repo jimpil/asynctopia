@@ -131,16 +131,17 @@
                             nconsumers (if (fn? multi-nconsumers)
                                          (multi-nconsumers topic)
                                          (or nconsumers 1))
-                            _ (assert (pos? nconsumers))
-                            [sub-buf per-consumer] (cond
-                                                     (number? topic-buffer)
-                                                     [topic-buffer (/ topic-buffer nconsumers)]
+                            _ (assert (pos? nconsumers) "Need to have at least 1 consumer!")
+                            [sub-buf per-consumer]
+                            (cond
+                              (number? topic-buffer)
+                              [topic-buffer (/ topic-buffer nconsumers)]
 
-                                                     (sequential? topic-buffer)  ;; [:dropping/:sliding N]
-                                                     [topic-buffer (/ (second topic-buffer) nconsumers)]
+                              (sequential? topic-buffer)  ;; [:dropping/:sliding N]
+                              [topic-buffer (/ (second topic-buffer) nconsumers)]
 
-                                                     :else [(c/clone-buffer topic-buffer)
-                                                            (/ (.n topic-buffer) nconsumers)]) ;; reflection here
+                              :else [(c/clone-buffer topic-buffer)
+                                     (/ (.n topic-buffer) nconsumers)]) ;; reflection here
                             sub-chan (channels/chan sub-buf
                                                     (comp (map payload-fn)
                                                           (map null/replacing)))]
@@ -204,7 +205,9 @@
       (throw (ex-info "problem" {}))))
 
   (def in-chan (channels/chan))
-  (pub-sub! in-chan :topic [[:t1 :t2] dummy-processor])
+  (pub-sub! in-chan {:topics [:t1 :t2]
+                     :topic-fn :topic
+                     :multi-process!  dummy-processor})
   (ca/>!! in-chan (gen-val! (rand-nth [:t1 :t2]))) ;; => true
   (ca/close! in-chan)
   )
